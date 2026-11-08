@@ -1,0 +1,11 @@
+faster-whisper
+sounddevice
+numpy
+ollama
+huggingface-hub>=0.21,<1
+av>=11,<18
+ddgs>=9.16,<10
+openai-codex==0.167.0
+groq>=1.7,<2
+pystray>=0.19,<1
+Pillow>=10,<13
