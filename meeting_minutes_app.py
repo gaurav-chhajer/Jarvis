@@ -95,6 +95,10 @@ def set_taskbar_button(window_id, visible):
     user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
                                     ctypes.c_int, ctypes.c_int, wintypes.UINT]
     user32.SetWindowPos.restype = wintypes.BOOL
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.ShowWindow.restype = wintypes.BOOL
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.IsWindowVisible.restype = wintypes.BOOL
     hwnd = user32.GetAncestor(window_id, 2)
     if not hwnd:
         raise ctypes.WinError(ctypes.get_last_error())
@@ -104,10 +108,22 @@ def set_taskbar_button(window_id, visible):
         exstyle = (exstyle | WS_EX_APPWINDOW) & ~WS_EX_TOOLWINDOW
     else:
         exstyle = (exstyle | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW
-    set_long(hwnd, -20, exstyle)
-    # SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED
-    if not user32.SetWindowPos(hwnd, None, 0, 0, 0, 0, 0x27):
-        raise ctypes.WinError(ctypes.get_last_error())
+    # Explorer requires hiding the window BEFORE changing taskbar eligibility.
+    # A frame refresh alone leaves the existing taskbar button behind.
+    was_visible = user32.IsWindowVisible(hwnd)
+    if was_visible:
+        user32.ShowWindow(hwnd, 0)  # SW_HIDE
+    try:
+        ctypes.set_last_error(0)
+        previous = set_long(hwnd, -20, exstyle)
+        if not previous and ctypes.get_last_error():
+            raise ctypes.WinError(ctypes.get_last_error())
+        # SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED
+        if not user32.SetWindowPos(hwnd, None, 0, 0, 0, 0, 0x37):
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        if was_visible:
+            user32.ShowWindow(hwnd, 8)  # SW_SHOWNA: preserve placement and activation
 
 SYSTEM_PROMPT = """You are Jarvis, a helpful general-purpose assistant.
 Help with questions, explanations, writing, programming, mathematics, and reasoning.
@@ -154,7 +170,10 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
                 pass
         super().__init__()
         self.title("Jarvis — Assistant")
-        self.geometry(f"{min(1280, self.winfo_screenwidth()-80)}x{min(800, self.winfo_screenheight()-110)}")
+        # The reference Settings layout is tall: an 800px cap cuts off its lower
+        # controls even on displays with room to show them. Keep its proportions
+        # where possible and retain scrolling on smaller desktops.
+        self.geometry(f"{min(1280, self.winfo_screenwidth()-80)}x{min(1160, self.winfo_screenheight()-110)}")
         self.minsize(1000, 640)
 
         self.q = queue.Queue()
@@ -171,15 +190,96 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
         self._warming_model = None
         self._preloaded_model = None
         self._used_web = False
+        self._floating_icon = None
+        self._collapsed = False
+        self._expanded_state = "normal"
 
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._close)
         self.bind("<Map>", self._on_window_mapped, add="+")
+        self.bind("<Unmap>", self._on_window_unmapped, add="+")
+        self.bind("<Configure>", self._remember_window_state, add="+")
         self.after(100, self._poll_queue)
         self.after(300, self.refresh_models)
 
     # ------------------------------------------------------------ helpers
+    def _remember_window_state(self, event):
+        if event.widget is self and not self._collapsed and self.state() in ("normal", "zoomed"):
+            self._expanded_state = self.state()
+
+    def _on_window_unmapped(self, event):
+        if event.widget is self and not self._closing and not getattr(self, "_taskbar_transition", False):
+            self.after_idle(self._collapse_if_minimized)
+
+    def _collapse_if_minimized(self):
+        if not self._closing and not getattr(self, "_taskbar_transition", False) and not self._collapsed and self.state() == "iconic":
+            self.collapse_to_icon()
+
+    def collapse_to_icon(self):
+        """Collapse directly, including when a tool window has no minimize button."""
+        if not self._closing and not self._collapsed:
+            self._collapsed = True
+            self.withdraw()
+            if self._floating_icon is None:
+                bubble = tk.Toplevel(self)
+                bubble.withdraw()
+                bubble.overrideredirect(True)
+                bubble.attributes("-topmost", True)
+                bubble.configure(bg="#171717")
+                bubble.geometry(f"64x64+{max(0, self.winfo_screenwidth()-96)}+{max(0, self.winfo_screenheight()-160)}")
+                canvas = tk.Canvas(bubble, width=64, height=64, bg="#171717", highlightthickness=0, cursor="hand2")
+                canvas.pack(fill="both", expand=True)
+                canvas.create_oval(3, 3, 61, 61, fill="#242424", outline="#737373", width=2)
+                canvas.create_text(32, 32, text="J", fill="white", font=("Segoe UI", 25, "bold"))
+                canvas.bind("<ButtonPress-1>", self._floating_press)
+                canvas.bind("<B1-Motion>", self._floating_drag)
+                canvas.bind("<ButtonRelease-1>", self._floating_release)
+                self._floating_icon = bubble
+            self._floating_icon.deiconify()
+            self._floating_icon.lift()
+            if sys.platform == "win32":
+                try:
+                    set_capture_exclusion(self._floating_icon.winfo_id(), self.capture_excluded.get())
+                except (OSError, RuntimeError):
+                    pass
+
+    def _floating_press(self, event):
+        bubble = self._floating_icon
+        self._floating_origin = (event.x_root, event.y_root, bubble.winfo_x(), bubble.winfo_y())
+        self._floating_moved = False
+
+    def _floating_drag(self, event):
+        start_x, start_y, window_x, window_y = self._floating_origin
+        dx, dy = event.x_root-start_x, event.y_root-start_y
+        if abs(dx) + abs(dy) > 5:
+            self._floating_moved = True
+        if self._floating_moved:
+            x = min(max(0, window_x+dx), max(0, self.winfo_screenwidth()-64))
+            y = min(max(0, window_y+dy), max(0, self.winfo_screenheight()-64))
+            self._floating_icon.geometry(f"+{x}+{y}")
+
+    def _floating_release(self, event):
+        if not self._floating_moved:
+            self._restore_full_window()
+
+    def _restore_full_window(self):
+        if self._floating_icon is not None:
+            self._floating_icon.withdraw()
+        self._collapsed = False
+        self.deiconify()
+        self.state(self._expanded_state)
+        # Withdraw/deiconify preserves child layout. Do not re-manage sidebar
+        # widgets here: their grid placement belongs to _build_ui().
+        self.lift()
+        self.focus_set()
+
     def _on_window_mapped(self, event):
+        if event.widget is self and self.state() in ("normal", "zoomed"):
+            self._expanded_state = self.state()
+            if self._collapsed:
+                self._collapsed = False
+                if self._floating_icon is not None:
+                    self._floating_icon.withdraw()
         if event.widget is self and sys.platform == "win32":
             self._apply_capture_exclusion()
 
@@ -194,6 +294,23 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
                 if self.capture_excluded.get() else "Exclusion disabled"
             )
 
+    def _set_taskbar_visible(self, visible):
+        """Let Tk manage mapping so native hide events cannot strand the window."""
+        previous_state = self.state()
+        self._taskbar_transition = True
+        try:
+            self.withdraw()
+            self.update_idletasks()
+            self.attributes("-toolwindow", not visible)
+        finally:
+            try:
+                self.deiconify()
+                if previous_state == "zoomed":
+                    self.state("zoomed")
+                self.lift()
+            finally:
+                self._taskbar_transition = False
+
     def hide_to_tray(self):
         """Hide this app's taskbar button and keep a tray icon to restore it."""
         if sys.platform != "win32":
@@ -207,9 +324,9 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
             return
         if getattr(self, "_tray_icon", None):
             try:
-                set_taskbar_button(self.winfo_id(), False)
+                self._set_taskbar_visible(False)
                 self.set_status("Window stays open. Right-click the Jarvis tray icon to restore its taskbar button.")
-            except (OSError, RuntimeError) as exc:
+            except (OSError, RuntimeError, tk.TclError) as exc:
                 self.set_status(f"Could not hide the taskbar button: {exc}")
             return
         image = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
@@ -223,8 +340,8 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
         self._tray_icon = icon
         threading.Thread(target=icon.run, daemon=True).start()
         try:
-            set_taskbar_button(self.winfo_id(), False)
-        except (OSError, RuntimeError) as exc:
+            self._set_taskbar_visible(False)
+        except (OSError, RuntimeError, tk.TclError) as exc:
             icon.stop()
             self._tray_icon = None
             self.set_status(f"Could not hide the taskbar button: {exc}")
@@ -235,8 +352,8 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
         if getattr(self, "_closing", False):
             return
         def restore():
-            self.deiconify()
-            set_taskbar_button(self.winfo_id(), True)
+            self._restore_full_window()
+            self._set_taskbar_visible(True)
             self.lift()
         self.after(0, restore)
 
@@ -416,11 +533,6 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
         if icon:
             icon.stop()
             self._tray_icon = None
-        if sys.platform == "win32":
-            try:
-                set_taskbar_button(self.winfo_id(), True)
-            except (OSError, RuntimeError):
-                pass
         if self.stream is not None:
             try:
                 self.stream.stop()

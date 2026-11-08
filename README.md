@@ -68,6 +68,10 @@ This Windows environment reuses some system packages. The provider dependencies 
 
 ## Privacy and shortcuts
 
+Minimize Jarvis to collapse it into a small floating J icon that stays above other windows.
+Click the icon to restore the full window, or drag it to reposition it. Recording and answers
+continue while collapsed. Close the full window to quit.
+
 On Windows 10 version 2004+ and Windows 11, Settings can exclude the main window from compatible screen captures. The status reports Windows confirmation. Test with your meeting app; capture methods vary. Separate system dialogs are not covered. Other operating systems currently have no capture exclusion.
 
 On Windows, **Hide taskbar button** removes only Jarvis's taskbar button; its window stays visible. Right-click the Jarvis notification-area icon and choose **Show Jarvis** to restore the taskbar button or **Quit** to exit. The notification-area icon remains visible.
