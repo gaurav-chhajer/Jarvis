@@ -16,6 +16,7 @@ Double-click `start_assistant.cmd`, or run from this folder:
 | --- | --- | --- |
 | Codex (default) | Sign in with ChatGPT using `codex login`, then Check connection | OpenAI, using your Codex subscription allowance |
 | Groq | Enter your API key in Settings, then Check connection | Groq, using your account limits and billing |
+| Gemini | Enter your Google AI Studio API key in Settings, then Check connection | Google Gemini, using your account limits and billing |
 | Ollama (offline) | Install Ollama and download an answer model | This computer; no web search |
 
 Codex uses the official `openai-codex` Python SDK and its pinned runtime. It reuses your Codex ChatGPT sign-in; the app does not read or copy authentication tokens. Your account must provide Codex access. API-key sign-in is deliberately rejected for this option, preventing unexpected OpenAI API billing. Keep **Account default** unless you know an available model ID. If signed out, run `codex login` in a terminal and check the connection again. [Official SDK documentation](https://learn.chatgpt.com/docs/codex-sdk), [authentication](https://learn.chatgpt.com/docs/auth).
@@ -23,6 +24,8 @@ Codex uses the official `openai-codex` Python SDK and its pinned runtime. It reu
 Codex is configured for answering: ephemeral threads, read-only sandbox, denied permission escalation, and disabled shell, code execution, apps, plugins, MCP configuration, and built-in web tools. Code is displayed as examples, never automatically executed by Jarvis. The app supplies retrieved web excerpts itself.
 
 Groq defaults to `openai/gpt-oss-120b`. Check connection validates the key and lists available models. The masked key field applies immediately for this session. **Save key securely** uses Windows DPAPI encryption tied to your Windows account and stores ciphertext in `.runtime/groq-key.bin`. To forget it, clear the field and save. Keys are never written to preferences or sent as conversation text. On other platforms, use session entry or `GROQ_API_KEY`; secure disk saving is Windows-only. A live Groq request requires your key. [Groq documentation](https://console.groq.com/docs/quickstart).
+
+Gemini defaults to `gemini-2.5-flash`. Check connection validates the Google AI Studio key and lists available generation models. The masked key field applies immediately for this session. **Save key securely** uses Windows DPAPI encryption tied to your Windows account and stores ciphertext in `.runtime/gemini-key.bin`. To forget it, clear the field and save. Keys are never written to preferences or sent as conversation text. On other platforms, use session entry or `GEMINI_API_KEY`; secure disk saving is Windows-only. Create a key in [Google AI Studio](https://aistudio.google.com/apikey). Requests use Google's Gemini API through the official Google GenAI SDK.
 
 Ollama uses only `http://127.0.0.1:11434`, even if OLLAMA_HOST points elsewhere. The app can start an installed Ollama runtime, including `.runtime/ollama/ollama.exe`. Download models before disconnecting:
 
@@ -47,9 +50,9 @@ Answers render Markdown headings, bold/italic text, inline code, links, lists, q
 
 Microphone recordings use the device's native sample rate and are explicitly resampled to 16 kHz for Whisper. The app reports very quiet audio, clipping, dropped input buffers, and low recognition confidence. Suspect transcripts pause automatic answering so you can edit and Send. Silent recordings show an error instead of being transcribed. Starting a new transcription clears the previous transcript so a failed recording cannot reuse old context. For misheard English, keep Small.en and English selected, turn Fast transcription off, speak near the microphone, and review the transcript. This app captures the default microphone, not meeting participants' system audio.
 
-With Codex or Groq, questions, included transcript, relevant search excerpts, and recent chat are sent to the selected provider. Audio files are never uploaded. Speech recognition remains local. Codex ephemeral threads avoid normal saved conversation threads, but provider data policies and runtime diagnostics still apply; this is not a zero-retention guarantee.
+With Codex, Groq, or Gemini, questions, included transcript, relevant search excerpts, and recent chat are sent to the selected provider. Audio files are never uploaded. Speech recognition remains local. Codex ephemeral threads avoid normal saved conversation threads, but provider data policies and runtime diagnostics still apply; this is not a zero-retention guarantee.
 
-Automatic web search is available with online providers for current-information questions and explicit search requests. Say "search the web" to request verification. Disable **Allow automatic web search** in Settings to prevent search queries. This does not make Codex or Groq offline; select Ollama for offline answers.
+Automatic web search is available with online providers for current-information questions and explicit search requests. Say "search the web" to request verification. Disable **Allow automatic web search** in Settings to prevent search queries. This does not make Codex, Groq, or Gemini offline; select Ollama for offline answers.
 
 Search uses up to three result excerpts, cached in memory for 60 seconds. Clear typed questions skip query rewriting; context-dependent queries may be rewritten by the selected provider. Search queries can contain relevant question or transcript details. Click **Search sources** links for full pages. Excerpts can be incomplete; answers without search are not live internet verification. Failed searches show an error. Models can make mistakes.
 

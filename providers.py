@@ -7,9 +7,8 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parent
-LABELS = {"codex": "Codex", "groq": "Groq", "ollama": "Ollama (offline)"}
-DEFAULTS = {"codex": "Account default", "groq": "openai/gpt-oss-120b", "ollama": "llama3.1:8b"}
-KEY_FILE = ROOT / ".runtime" / "groq-key.bin"
+LABELS = {"codex": "Codex", "groq": "Groq", "gemini": "Gemini", "ollama": "Ollama (offline)"}
+DEFAULTS = {"codex": "Account default", "groq": "openai/gpt-oss-120b", "gemini": "gemini-2.5-flash", "ollama": "llama3.1:8b"}
 
 
 def protect_key(value, decrypt=False):
@@ -36,24 +35,30 @@ def protect_key(value, decrypt=False):
         kernel.LocalFree(ctypes.cast(output.data, ctypes.c_void_p))
 
 
-def load_key():
-    if KEY_FILE.exists():
+def _key_file(provider):
+    return ROOT / ".runtime" / f"{provider}-key.bin"
+
+
+def load_key(provider="groq"):
+    key_file = _key_file(provider)
+    if key_file.exists():
         try:
-            return protect_key(KEY_FILE.read_bytes(), decrypt=True).decode("utf-8")
+            return protect_key(key_file.read_bytes(), decrypt=True).decode("utf-8")
         except (OSError, RuntimeError, UnicodeError):
             return ""
-    return os.environ.get("GROQ_API_KEY", "")
+    return os.environ.get("GEMINI_API_KEY" if provider == "gemini" else "GROQ_API_KEY", "")
 
 
-def save_key(key):
+def save_key(key, provider="groq"):
+    key_file = _key_file(provider)
     if not key.strip():
-        KEY_FILE.unlink(missing_ok=True)
+        key_file.unlink(missing_ok=True)
         return
     encrypted = protect_key(key.strip().encode("utf-8"))
-    KEY_FILE.parent.mkdir(exist_ok=True)
-    temporary = KEY_FILE.with_suffix(".tmp")
+    key_file.parent.mkdir(exist_ok=True)
+    temporary = key_file.with_suffix(".tmp")
     temporary.write_bytes(encrypted)
-    temporary.replace(KEY_FILE)
+    temporary.replace(key_file)
 
 
 # Overrides apply only to this child runtime, never to the user's Codex settings.
@@ -95,7 +100,13 @@ def check_cloud(provider, key):
             check_codex_account(client)
         return [DEFAULTS[provider]]
     if not key.strip():
-        raise RuntimeError("Enter your Groq API key in Settings, then Check connection.")
+        raise RuntimeError(f"Enter your {LABELS[provider]} API key in Settings, then Check connection.")
+    if provider == "gemini":
+        from google import genai
+        with genai.Client(api_key=key.strip()) as client:
+            return sorted(model.name.removeprefix("models/") for model in client.models.list()
+                          if getattr(model, "supported_actions", None) is None
+                          or "generateContent" in model.supported_actions)
     from groq import Groq
     with Groq(api_key=key.strip(), timeout=45, max_retries=0) as client:
         return sorted(model.id for model in client.models.list().data)
@@ -128,7 +139,7 @@ class CloudChat:
     def _stream(self, model, messages):
         if self.provider == "groq":
             if not self.key.strip():
-                raise RuntimeError("Enter your Groq API key in Settings before asking a question.")
+                raise RuntimeError(f"Enter your {LABELS[self.provider]} API key in Settings before asking a question.")
             from groq import Groq
             with Groq(api_key=self.key.strip(), timeout=60, max_retries=0) as client:
                 with client.chat.completions.create(model=model, messages=messages, stream=True,
@@ -136,6 +147,27 @@ class CloudChat:
                     for part in response:
                         if part.choices and part.choices[0].delta.content:
                             yield part.choices[0].delta.content
+            return
+        if self.provider == "gemini":
+            if not self.key.strip():
+                raise RuntimeError("Enter your Gemini API key in Settings before asking a question.")
+            from google import genai
+            from google.genai import types
+            system = "\n".join(m["content"] for m in messages if m["role"] == "system")
+            contents = []
+            for message in messages:
+                if message["role"] == "system":
+                    continue
+                role = "user" if message["role"] == "user" else "model"
+                contents.append(types.Content(role=role, parts=[types.Part(text=message["content"])]))
+            with genai.Client(api_key=self.key.strip()) as client:
+                for chunk in client.models.generate_content_stream(
+                    model=model, contents=contents,
+                    config=types.GenerateContentConfig(system_instruction=system or None,
+                                                       max_output_tokens=4096),
+                ):
+                    if chunk.text:
+                        yield chunk.text
             return
         from openai_codex import Sandbox, ApprovalMode
         with codex_client() as client:

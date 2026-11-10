@@ -6,7 +6,7 @@ What it does
   2. Speech is transcribed locally. Recent conversation supports follow-up questions.
   3. Optionally search the web and include real search-source links in answers.
 
-Speech transcription runs locally. Codex and Groq send text to online providers;
+Speech transcription runs locally. Codex, Groq, and Gemini send text to online providers;
 Ollama answers offline and disables search and model downloads. Automatic web
 queries can contain relevant request/context details. Audio files are never uploaded.
 Only YOUR microphone is used, and only while you press Record.
@@ -438,7 +438,7 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
     def refresh_models(self):
         provider = getattr(self, "_selected_provider", "ollama")
         if provider != "ollama":
-            key = self.groq_key_var.get()
+            key = self.api_key_var.get() if provider in ("groq", "gemini") else ""
             self.engine_status.set(f"Checking {LABELS[provider]}...")
             def check():
                 try:
@@ -826,7 +826,7 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
         query = direct_search_query(typed_question, history) if not notes and use_web else None
         threading.Thread(target=self._run_llm,
                          args=(model, user_msg, history, use_web, query),
-                         kwargs={"provider": provider, "api_key": self.groq_key_var.get() if provider == "groq" else ""},
+                         kwargs={"provider": provider, "api_key": self.api_key_var.get() if provider in ("groq", "gemini") else ""},
                          daemon=True).start()
 
     def _run_llm(self, model, user_msg, history=(), use_web=False, direct_query=None, provider="ollama", api_key=""):
@@ -886,7 +886,8 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
         except WebSearchError as e:
             self.q.put(("error", str(e)))
         except ImportError:
-            self.q.put(("error", self._install_hint("ollama" if provider == "ollama" else "openai-codex groq")))
+            packages = "ollama" if provider == "ollama" else "openai-codex groq google-genai"
+            self.q.put(("error", self._install_hint(packages)))
         except Exception as e:
             self.q.put(("error", safe_error(provider, e)))
 

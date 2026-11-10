@@ -161,6 +161,7 @@ class AudioWorkspaceUI:
         self.model_var = tk.StringVar()
         self.provider_var = tk.StringVar(value="Codex")
         self.groq_key_var = tk.StringVar(value=load_key())
+        self.api_key_var = self.groq_key_var
         self._provider_models = dict(DEFAULTS)
         self._selected_provider = "codex"
         self.whisper_var = tk.StringVar(value="small.en")
@@ -190,6 +191,8 @@ class AudioWorkspaceUI:
                 allowed = False
         self.allow_web = tk.BooleanVar(value=allowed)
         self.model_var.set(self._provider_models[self._selected_provider])
+        if self._selected_provider in ("groq", "gemini"):
+            self.api_key_var.set(load_key(self._selected_provider))
         self.engine_status.set(f"Checking {LABELS[self._selected_provider]}...")
         self.engine_detail.set("Checking your selected answer provider.")
         self.answer_mode = tk.StringVar(value="Automatic · web queries may go online." if allowed else "Web access disabled in Settings.")
@@ -652,10 +655,12 @@ class AudioWorkspaceUI:
         self.key_frame = tk.Frame(provider_frame, bg=self.WHITE)
         self.key_frame.grid(row=3, column=0, sticky="ew", pady=(12, 0))
         self.key_frame.grid_columnconfigure(0, weight=1)
-        self._field_label(self.key_frame, "Groq API key", 0)
-        self.key_entry = ttk.Entry(self.key_frame, textvariable=self.groq_key_var, show="*")
+        self.key_heading = tk.StringVar(value="API key")
+        tk.Label(self.key_frame, textvariable=self.key_heading, bg=self.WHITE, fg=self.INK,
+                 font=(self.face, 10, "bold")).grid(row=0, column=0, sticky="w")
+        self.key_entry = ttk.Entry(self.key_frame, textvariable=self.api_key_var, show="*")
         self.key_entry.grid(row=1, column=0, sticky="ew", pady=(6, 0))
-        self.key_save = ttk.Button(self.key_frame, text="Save key securely", command=self._save_groq_key)
+        self.key_save = ttk.Button(self.key_frame, text="Save key securely", command=self._save_provider_key)
         self.key_save.grid(row=1, column=1, padx=(12, 0), pady=(6, 0))
         key_note = tk.Label(self.key_frame, text="Used for this session immediately. Save encrypts it with your Windows account. Clear and save to forget it.",
                             bg=self.WHITE, fg=self.MUTED, wraplength=420, justify="left")
@@ -785,9 +790,15 @@ class AudioWorkspaceUI:
         self.provider_description.set({
             "codex": "Uses your ChatGPT sign-in and Codex subscription limits. Questions, included transcript, and recent chat go to OpenAI. Speech is transcribed locally.",
             "groq": "Fast online answers using your Groq key. Questions, included transcript, and recent chat go to Groq; account limits apply.",
+            "gemini": "Online answers using your Google AI Studio Gemini key. Questions, included transcript, and recent chat go to Google; account limits apply.",
             "ollama": "Offline answers on this computer. Web search is disabled. Download answer and speech models before going offline.",
         }[provider])
-        self.key_frame.grid() if provider == "groq" else self.key_frame.grid_remove()
+        if provider in ("groq", "gemini"):
+            self.key_heading.set(f"{LABELS[provider]} API key")
+            self.api_key_var.set(load_key(provider))
+            self.key_frame.grid()
+        else:
+            self.key_frame.grid_remove()
 
     def _provider_changed(self, event=None):
         if self.busy or self.recording:
@@ -795,6 +806,8 @@ class AudioWorkspaceUI:
             return
         self._provider_models[self._selected_provider] = self.model_var.get().strip()
         self._selected_provider = next(k for k, v in LABELS.items() if v == self.provider_var.get())
+        if self._selected_provider in ("groq", "gemini"):
+            self.api_key_var.set(load_key(self._selected_provider))
         self.model_var.set(self._provider_models[self._selected_provider])
         self.model_box["values"] = [DEFAULTS[self._selected_provider]]
         self._history = []
@@ -809,10 +822,11 @@ class AudioWorkspaceUI:
         if self._selected_provider == "ollama":
             self._preload_model(self.model_var.get())
 
-    def _save_groq_key(self):
+    def _save_provider_key(self):
         try:
-            save_key(self.groq_key_var.get())
-            self.set_status("Groq key encrypted and saved." if self.groq_key_var.get().strip() else "Saved Groq key removed.")
+            save_key(self.api_key_var.get(), self._selected_provider)
+            name = LABELS[self._selected_provider]
+            self.set_status(f"{name} key encrypted and saved." if self.api_key_var.get().strip() else f"Saved {name} key removed.")
         except (OSError, RuntimeError) as error:
             self.set_status(str(error))
 
@@ -940,10 +954,6 @@ class AudioWorkspaceUI:
 
     def new_chat(self):
         if self.busy or self.recording:
-            return
-        if (self._history or self.answer.get("1.0", "end").strip()) and not messagebox.askyesno(
-            "Start a new chat?", "Clear the conversation, answer, and optional audio context?", parent=self
-        ):
             return
         self._history = []
         self._history_context = None
