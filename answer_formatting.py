@@ -22,7 +22,10 @@ def format_answer(widget, face="Segoe UI", open_link=None):
                            spacing3=0, wrap="none", tabs=("32p",)),
         "md-quote": dict(lmargin1=16, lmargin2=16, foreground="#626262"),
         "md-list": dict(lmargin1=8, lmargin2=26, spacing1=2, spacing3=2),
-        "md-table": dict(font=("Consolas", 10), wrap="none", spacing1=0, spacing3=0),
+        "md-table": dict(font=("Consolas", 10), wrap="none", spacing1=2, spacing3=2),
+        "md-table-header": dict(font=("Consolas", 10, "bold"), background="#e8eef8",
+                                 foreground="#183b68", wrap="none", spacing1=4, spacing3=4),
+        "md-table-alt": dict(background="#f4f6f9"),
     }
     for level, size in enumerate((19, 16, 14, 12, 11, 11), 1):
         styles[f"md-h{level}"] = dict(font=(face, size, "bold"), spacing1=12, spacing3=7)
@@ -71,8 +74,12 @@ def format_answer(widget, face="Segoe UI", open_link=None):
                 inline(content, start + width)
 
     position, fence, code_start = 0, None, 0
+    table_mode, table_row = False, 0
     code_ranges = []
-    for line in text.splitlines(keepends=True):
+    lines = text.splitlines(keepends=True)
+    table_row_re = re.compile(r"^\s*\|.*\|\s*$")
+    table_separator_re = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$")
+    for index, line in enumerate(lines):
         end = position + len(line)
         marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*?)(?:\r?\n)?$", line)
         if fence:
@@ -85,8 +92,25 @@ def format_answer(widget, face="Segoe UI", open_link=None):
                 tag("code-block", position, end)
         elif marker:
             fence, code_start = marker[1], end
+            table_mode = False
             tag("md-hidden", position, end)
+        elif (table_row_re.match(line) and index + 1 < len(lines)
+              and table_separator_re.match(lines[index + 1])):
+            table_mode, table_row = True, 0
+            tag("md-table", position, end)
+            tag("md-table-header", position, end)
+            inline(line, position)
+        elif table_mode and table_separator_re.match(line):
+            # Markdown's alignment row describes the table but is not a data row.
+            tag("md-hidden", position, end)
+        elif table_mode and table_row_re.match(line):
+            tag("md-table", position, end)
+            if table_row % 2 == 1:
+                tag("md-table-alt", position, end)
+            table_row += 1
+            inline(line, position)
         else:
+            table_mode = False
             heading = re.match(r"^( {0,3}#{1,6})[ \t]+", line)
             quote = re.match(r"^ {0,3}>[ \t]?", line)
             bullet = re.match(r"^\s*(?:[-+*]|\d+[.)])[ \t]+", line)

@@ -261,11 +261,32 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
             if button is not None:
                 button.withdraw()
             return
-        # The standard Windows close button is about 30px wide; place this
-        # control immediately to its left in the title bar.
+        # Read the native caption-button bounds so the overlay stays in the
+        # title bar at any DPI, including after the taskbar style changes.
         x = self.winfo_rootx() + self.winfo_width() - 60
-        y = self.winfo_rooty() + 3
-        button.geometry(f"30x25+{x}+{y}")
+        y = self.winfo_rooty() - 28
+        width, height = 30, 25
+        try:
+            user32 = ctypes.WinDLL("user32", use_last_error=True)
+            user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
+            user32.GetAncestor.restype = wintypes.HWND
+            hwnd = user32.GetAncestor(self.winfo_id(), 2)
+            window_rect = wintypes.RECT()
+            if hwnd and user32.GetWindowRect(hwnd, ctypes.byref(window_rect)):
+                dwmapi = ctypes.WinDLL("dwmapi", use_last_error=True)
+                get_attribute = dwmapi.DwmGetWindowAttribute
+                get_attribute.argtypes = [wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
+                get_attribute.restype = ctypes.c_long
+                caption = wintypes.RECT()
+                result = get_attribute(hwnd, 5, ctypes.byref(caption), ctypes.sizeof(caption))
+                if result == 0 and caption.right > caption.left and caption.bottom > caption.top:
+                    height = caption.bottom - caption.top
+                    width = height
+                    x = window_rect.left + caption.right - 2 * width
+                    y = window_rect.top + caption.top
+        except (AttributeError, OSError, tk.TclError):
+            pass
+        button.geometry(f"{width}x{height}+{x}+{y}")
         button.deiconify()
         button.lift()
 
@@ -288,6 +309,13 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
                 bubble.overrideredirect(True)
                 bubble.attributes("-topmost", True)
                 bubble.configure(bg="#171717")
+                if sys.platform == "win32":
+                    # Make the canvas background transparent so only the circular
+                    # badge is visible and clickable outside the full window.
+                    try:
+                        bubble.wm_attributes("-transparentcolor", "#171717")
+                    except tk.TclError:
+                        pass
                 bubble.geometry(f"64x64+{max(0, self.winfo_screenwidth()-96)}+{max(0, self.winfo_screenheight()-160)}")
                 canvas = tk.Canvas(bubble, width=64, height=64, bg="#171717", highlightthickness=0, cursor="hand2")
                 canvas.pack(fill="both", expand=True)
@@ -350,10 +378,19 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
             self._apply_capture_exclusion()
 
     def _apply_capture_exclusion(self):
-        try:
-            set_capture_exclusion(self.winfo_id(), self.capture_excluded.get())
-        except (OSError, RuntimeError) as exc:
-            self.capture_status.set(f"Capture exclusion not confirmed: {exc}")
+        targets = [self.winfo_id()]
+        for name in ("_titlebar_minimize", "_floating_icon"):
+            window = getattr(self, name, None)
+            if window is not None:
+                targets.append(window.winfo_id())
+        errors = []
+        for window_id in targets:
+            try:
+                set_capture_exclusion(window_id, self.capture_excluded.get())
+            except (OSError, RuntimeError) as exc:
+                errors.append(str(exc))
+        if errors:
+            self.capture_status.set(f"Capture exclusion not confirmed: {errors[0]}")
         else:
             self.capture_status.set(
                 "Exclusion enabled (compatible capture tools)"
@@ -376,6 +413,8 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
                 self.lift()
             finally:
                 self._taskbar_transition = False
+                self.after_idle(self._position_titlebar_minimize)
+                self.after_idle(self._apply_capture_exclusion)
 
     def hide_to_tray(self):
         """Hide this app's taskbar button and keep a tray icon to restore it."""
