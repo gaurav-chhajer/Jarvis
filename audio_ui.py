@@ -60,7 +60,7 @@ class Toggle(tk.Canvas):
     ON, OFF, DISABLED = "#4F46E5", "#8B92A8", "#C9CDDB"
 
     def __init__(self, parent, variable, command=None, bg="#ffffff"):
-        super().__init__(parent, width=48, height=28, bg=bg, bd=0, highlightthickness=2,
+        super().__init__(parent, width=40, height=22, bg=bg, bd=0, highlightthickness=2,
                          highlightbackground=bg, highlightcolor="#4F46E5", takefocus=True, cursor="hand2")
         self.variable, self.command, self._disabled = variable, command, False
         self._trace = variable.trace_add("write", lambda *_: self._draw())
@@ -75,11 +75,11 @@ class Toggle(tk.Canvas):
         on = bool(self.variable.get())
         color = self.DISABLED if self._disabled else (self.ON if on else self.OFF)
         self.delete("all")
-        self.create_oval(2, 2, 26, 26, fill=color, outline=color)
-        self.create_oval(22, 2, 46, 26, fill=color, outline=color)
-        self.create_rectangle(14, 2, 34, 27, fill=color, outline=color)
-        x = 24 if on else 6
-        self.create_oval(x, 5, x + 18, 23, fill="#ffffff", outline="#ffffff")
+        self.create_oval(1, 1, 21, 21, fill=color, outline=color)
+        self.create_oval(19, 1, 39, 21, fill=color, outline=color)
+        self.create_rectangle(11, 1, 29, 21, fill=color, outline=color)
+        x = 21 if on else 3
+        self.create_oval(x, 3, x + 16, 19, fill="#ffffff", outline="#ffffff")
 
     def _flip(self, event=None):
         if not self._disabled:
@@ -149,6 +149,7 @@ class AudioWorkspaceUI:
         self._retry_action = None
         self._last_audio = None
         self._placeholders = {}
+        self._placeholder_widths = {}
         self._source = tk.StringVar(value="No audio added")
         self.engine_status = tk.StringVar(value="Connecting to Ollama…")
         self.engine_detail = tk.StringVar(value="Checking your local answer model.")
@@ -198,70 +199,41 @@ class AudioWorkspaceUI:
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Sidebar: brand, navigation, audio tools, status.
-        rail = tk.Frame(self, bg=self.WHITE, width=244)
+        # Sidebar: brand, navigation, status.
+        rail = tk.Frame(self, bg=self.WHITE, width=184)
         rail.grid(row=0, column=0, rowspan=2, sticky="nsew")
         rail.grid_propagate(False)
         rail.grid_columnconfigure(0, weight=1)
         rail.grid_rowconfigure(8, weight=1)
         tk.Frame(rail, bg=self.LINE, width=1).place(relx=1.0, x=-1, rely=0, relheight=1.0)
         brand = tk.Frame(rail, bg=self.WHITE)
-        brand.grid(row=0, column=0, sticky="ew", padx=20, pady=(24, 16))
-        mark = tk.Canvas(brand, width=40, height=40, bg=self.WHITE, highlightthickness=0)
-        mark.pack(side="left", padx=(0, 12))
-        self._round_rect(mark, 0, 0, 40, 40, 12, fill=self.ACCENT, outline=self.ACCENT)
-        for x, half in [(10, 4), (15, 8), (20, 11), (25, 7), (30, 4)]:
-            mark.create_line(x, 20-half, x, 20+half, fill=self.WHITE, width=3, capstyle="round")
+        brand.grid(row=0, column=0, sticky="ew", padx=14, pady=(20, 14))
+        mark = tk.Canvas(brand, width=34, height=34, bg=self.WHITE, highlightthickness=0)
+        mark.pack(side="left", padx=(0, 10))
+        self._round_rect(mark, 0, 0, 34, 34, 10, fill=self.ACCENT, outline=self.ACCENT)
+        for x, half in [(8, 3), (12, 7), (17, 9), (22, 6), (26, 3)]:
+            mark.create_line(x, 17-half, x, 17+half, fill=self.WHITE, width=3, capstyle="round")
         names = tk.Frame(brand, bg=self.WHITE)
         names.pack(side="left")
         tk.Label(names, text="Jarvis", bg=self.WHITE, fg=self.INK,
-                 font=(self.face, 16, "bold")).pack(anchor="w")
+                 font=(self.face, 14, "bold")).pack(anchor="w")
         tk.Label(names, text="Personal assistant", bg=self.WHITE, fg=self.MUTED,
-                 font=(self.face, 9)).pack(anchor="w")
+                 font=(self.face, 8)).pack(anchor="w")
         nav = tk.Frame(rail, bg=self.WHITE)
-        nav.grid(row=1, column=0, sticky="ew", padx=12)
+        nav.grid(row=1, column=0, sticky="ew", padx=8)
         self.workspace_nav = self._nav_button(nav, "Workspace", self.show_workspace)
         self.settings_nav = self._nav_button(nav, "Settings", self.show_settings)
         self.bind("<Control-m>", lambda event: self.collapse_to_icon(), add="+")
-        tk.Label(rail, text="OPTIONAL AUDIO", bg=self.WHITE, fg=self.MUTED, anchor="w",
-                 font=(self.face, 8, "bold")).grid(row=2, column=0, sticky="ew", padx=24, pady=(22, 8))
-        actions = tk.Frame(rail, bg=self.WHITE)
-        actions.grid(row=3, column=0, sticky="ew", padx=20)
-        self.rec_btn = ttk.Button(actions, text="Record audio", style="Primary.TButton", command=self.toggle_record)
-        self.rec_btn.pack(fill="x")
-        self.import_btn = ttk.Button(actions, text="Open audio file…", command=self.open_audio)
-        self.import_btn.pack(fill="x", pady=(8, 0))
-        monitor = tk.Frame(rail, bg=self.SURFACE_ALT, highlightbackground=self.LINE, highlightthickness=1)
-        monitor.grid(row=4, column=0, sticky="ew", padx=20, pady=(14, 0))
-        inner = tk.Frame(monitor, bg=self.SURFACE_ALT)
-        inner.pack(fill="x", padx=14, pady=12)
-        self.rec_label = tk.Label(inner, text="00:00", bg=self.SURFACE_ALT, fg=self.INK,
-                                  font=("Consolas", 22))
-        self.rec_label.pack(anchor="w")
-        tk.Label(inner, textvariable=self.stage, bg=self.SURFACE_ALT, fg=self.MUTED,
-                 font=(self.face, 9), wraplength=170, justify="left").pack(anchor="w", pady=(2, 8))
-        self.level_canvas = tk.Canvas(inner, width=168, height=24, bg=self.SURFACE_ALT, highlightthickness=0)
-        self.level_canvas.pack(anchor="w")
-        self._paint_input_level()
-        tk.Label(inner, textvariable=self._source, bg=self.SURFACE_ALT, fg=self.MUTED, justify="left",
-                 wraplength=170, font=(self.face, 9)).pack(anchor="w", pady=(8, 0))
         bottom = tk.Frame(rail, bg=self.WHITE)
-        bottom.grid(row=9, column=0, sticky="ew", padx=24, pady=(8, 10))
-        self.engine_dot = tk.Label(bottom, text="●", bg=self.WHITE, fg=self.MUTED, font=(self.face, 9))
+        bottom.grid(row=9, column=0, sticky="ew", padx=16, pady=(8, 10))
+        self.engine_dot = tk.Label(bottom, text="\u25cf", bg=self.WHITE, fg=self.MUTED, font=(self.face, 9))
         self.engine_dot.grid(row=0, column=0, sticky="w", padx=(0, 6))
         tk.Label(bottom, textvariable=self.engine_status, bg=self.WHITE, fg=self.INK,
-                 wraplength=150, justify="left", font=(self.face, 10, "bold")).grid(row=0, column=1, sticky="w")
+                 wraplength=120, justify="left", font=(self.face, 10, "bold")).grid(row=0, column=1, sticky="w")
         tk.Label(bottom, text="Speech stays local", bg=self.WHITE, fg=self.MUTED,
                  font=(self.face, 9)).grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 2))
         tk.Label(bottom, textvariable=self.privacy_summary, bg=self.WHITE, fg=self.MUTED,
-                 font=(self.face, 9), wraplength=172, justify="left").grid(row=2, column=0, columnspan=2, sticky="w")
-        self.collapse_button = tk.Button(
-            rail, text="Minimize to icon", command=self.collapse_to_icon,
-            bg=self.WHITE, fg=self.INK, activebackground=self.SURFACE_ALT, activeforeground=self.INK,
-            relief="flat", bd=0, padx=10, pady=9, cursor="hand2", takefocus=True,
-            highlightthickness=1, highlightbackground=self.CONTROL_BORDER, highlightcolor=self.ACCENT)
-        self.collapse_button.grid(row=10, column=0, sticky="ew", padx=20, pady=(0, 20))
-
+                 font=(self.face, 9), wraplength=148, justify="left").grid(row=2, column=0, columnspan=2, sticky="w")
         self.content = tk.Frame(self, bg=self.BG)
         self.content.grid(row=0, column=1, sticky="nsew", padx=28, pady=(28, 12))
         self.content.grid_columnconfigure(0, weight=1)
@@ -271,14 +243,18 @@ class AudioWorkspaceUI:
         self.workspace.grid_columnconfigure(0, weight=1)
         self.workspace.grid_rowconfigure(2, weight=1)
         heading = tk.Frame(self.workspace, bg=self.BG)
-        heading.grid(row=0, column=0, sticky="ew", pady=(0, 20))
+        heading.grid(row=0, column=0, sticky="ew", pady=(6, 12))
         heading.grid_columnconfigure(0, weight=1)
-        tk.Label(heading, text="Assistant workspace", bg=self.BG, fg=self.INK,
-                 font=(self.face, 24, "bold")).grid(row=0, column=0, sticky="w")
-        tk.Label(heading, text="Ask a question, bring audio, or search the web.", bg=self.BG,
-                 fg=self.MUTED, font=(self.face, 11)).grid(row=1, column=0, sticky="w", pady=(5, 0))
+        titles = tk.Frame(heading, bg=self.BG)
+        titles.grid(row=0, column=0, sticky="w")
+        tk.Label(titles, text="Assistant workspace", bg=self.BG, fg=self.INK,
+                 font=(self.face, 16, "bold")).pack(side="left")
+        tk.Label(titles, text="Ask a question, bring audio, or search the web.", bg=self.BG,
+                 fg=self.MUTED, font=(self.face, 10)).pack(side="left", padx=(14, 0), pady=(4, 0))
+        self.context_btn = ttk.Button(heading, text="Context \u00b7 0 words", command=self.toggle_context, width=0)
+        self.context_btn.grid(row=0, column=1, sticky="e", padx=(12, 8))
         self.new_chat_btn = ttk.Button(heading, text="New chat", command=self.new_chat, width=0)
-        self.new_chat_btn.grid(row=0, column=1, rowspan=2, sticky="e", padx=(12, 0))
+        self.new_chat_btn.grid(row=0, column=2, sticky="e")
         self.error_frame = tk.Frame(self.workspace, bg="#fff5f5", highlightbackground="#ecc4c7", highlightthickness=1)
         self.error_frame.grid(row=1, column=0, sticky="ew", pady=(0, 12))
         self.error_frame.grid_columnconfigure(0, weight=1)
@@ -294,13 +270,16 @@ class AudioWorkspaceUI:
         self.panes.grid(row=2, column=0, sticky="nsew")
         left = self._panel(self.panes)
         right = self._panel(self.panes)
-        self.panes.add(left, weight=4)
-        self.panes.add(right, weight=6)
+        self._context_panel = left
+        self._context_visible = False
+        self.panes.add(right, weight=1)
         left.grid_rowconfigure(1, weight=1)
         right.grid_rowconfigure(1, weight=1)
         for panel in (left, right):
             panel.grid_columnconfigure(0, weight=1)
         left_head = self._panel_header(left, "Context")
+        ttk.Button(left_head, text="Hide", style="Quiet.TButton",
+                   command=lambda: self._set_context_visible(False)).pack(side="right")
         self.clear_btn = ttk.Button(left_head, text="Clear", style="Quiet.TButton", command=self.clear_transcript)
         self.clear_btn.pack(side="right")
         tk.Label(left_head, textvariable=self.transcript_count, bg=self.WHITE, fg=self.MUTED,
@@ -310,8 +289,12 @@ class AudioWorkspaceUI:
         self.transcript.bind("<<Modified>>", self._transcript_modified)
         self.transcript.bind("<FocusIn>", lambda event: self._refresh_empty_states())
         self.transcript.bind("<FocusOut>", lambda event: self._refresh_empty_states())
-        tk.Label(left, text="Editable while the assistant is idle", bg=self.WHITE, fg=self.MUTED,
-                 font=(self.face, 9), anchor="w", padx=18, pady=12).grid(row=2, column=0, sticky="ew")
+        note = tk.Frame(left, bg=self.WHITE)
+        note.grid(row=2, column=0, sticky="ew", padx=18, pady=10)
+        tk.Label(note, textvariable=self._source, bg=self.WHITE, fg=self.INK,
+                 font=(self.face, 9), anchor="w").pack(anchor="w")
+        tk.Label(note, text="Editable while the assistant is idle", bg=self.WHITE, fg=self.MUTED,
+                 font=(self.face, 9), anchor="w").pack(anchor="w")
         right_head = self._panel_header(right, "Answer")
         self.save_btn = ttk.Button(right_head, text="Save…", style="Quiet.TButton", command=self.save_answer)
         self.save_btn.pack(side="right")
@@ -323,25 +306,15 @@ class AudioWorkspaceUI:
         self.answer.configure(xscrollcommand=horizontal.set)
         self.answer.bind("<Button-3>", self._answer_menu)
         self.answer.configure(state="disabled")
-        self._add_empty_state(self.answer, "What can I help with?", "Ask about writing, code, explanations, or a problem. Context and web search are handled automatically.")
-        composer = tk.Frame(right, bg=self.WHITE, padx=18, pady=16)
+        self._add_empty_state(self.answer, "What can I help with?", "Ask about writing, code, explanations, or a problem. Context and web search are handled automatically.", width=420)
+        composer = tk.Frame(right, bg=self.WHITE, padx=18, pady=12)
         composer.grid(row=2, column=0, sticky="ew")
         composer.grid_columnconfigure(0, weight=1)
-        tk.Label(composer, text="Ask anything", bg=self.WHITE, fg=self.INK,
-                 font=(self.face, 10, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 8))
-        self.question_entry = PromptBox(composer, self.question_var, font=(self.face, 11), height=3, width=1,
-                                        wrap="word", padx=10, pady=8, undo=True, relief="flat", bd=0,
-                                        highlightthickness=1, highlightbackground=self.CONTROL_BORDER, highlightcolor=self.ACCENT,
-                                        bg=self.WHITE, fg=self.INK, insertbackground=self.ACCENT)
-        self.question_entry.grid(row=1, column=0, sticky="ew")
-        self.question_entry.bind("<Return>", self._submit_question)
-        self.question_entry.bind("<Shift-Return>", self._question_newline)
-        tk.Label(composer, text="Shift+Enter: new line", bg=self.WHITE, fg=self.MUTED,
-                 font=(self.face, 9)).grid(row=0, column=1, sticky="e", pady=(0, 8))
-        self.gen_btn = ttk.Button(composer, text="Send", style="Primary.TButton", command=self.generate, width=7)
-        self.gen_btn.grid(row=1, column=1, padx=(10, 0), sticky="ns")
-        suggestions = tk.Frame(composer, bg=self.WHITE)
-        suggestions.grid(row=2, column=0, columnspan=2, sticky="w", pady=(8, 6))
+        top = tk.Frame(composer, bg=self.WHITE)
+        top.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        top.grid_columnconfigure(1, weight=1)
+        suggestions = tk.Frame(top, bg=self.WHITE)
+        suggestions.grid(row=0, column=0, sticky="w")
         self.suggestion_buttons = []
         for label, request in [("Summarize", "Summarize the transcript if provided, or our conversation."),
                                ("Explain simply", "Explain the topic in simple terms."),
@@ -350,8 +323,42 @@ class AudioWorkspaceUI:
                                 command=lambda value=request: self._choose_question(value))
             button.pack(side="left", padx=(0, 6))
             self.suggestion_buttons.append(button)
-        tk.Label(composer, textvariable=self.answer_mode, bg=self.WHITE,
-                 fg=self.MUTED, font=(self.face, 9)).grid(row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        tk.Label(top, textvariable=self.answer_mode, bg=self.WHITE,
+                 fg=self.MUTED, font=(self.face, 9)).grid(row=0, column=1, sticky="e")
+        box = tk.Frame(composer, bg=self.WHITE, highlightbackground=self.CONTROL_BORDER,
+                       highlightcolor=self.ACCENT, highlightthickness=1)
+        box.grid(row=1, column=0, sticky="ew")
+        box.grid_columnconfigure(0, weight=1)
+        self.question_entry = PromptBox(box, self.question_var, font=(self.face, 11), height=2, width=1,
+                                        wrap="word", padx=10, pady=8, undo=True, relief="flat", bd=0,
+                                        highlightthickness=0, bg=self.WHITE, fg=self.INK,
+                                        insertbackground=self.ACCENT)
+        self.question_entry.grid(row=0, column=0, sticky="ew")
+        self.question_entry.bind("<Return>", self._submit_question)
+        self.question_entry.bind("<Shift-Return>", self._question_newline)
+        self.question_entry.bind("<FocusIn>", lambda event: box.configure(highlightbackground=self.ACCENT), add="+")
+        self.question_entry.bind("<FocusOut>", lambda event: box.configure(highlightbackground=self.CONTROL_BORDER), add="+")
+        tools = tk.Frame(box, bg=self.WHITE)
+        tools.grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 8))
+        tools.grid_columnconfigure(4, weight=1)
+        self.rec_btn = ttk.Button(tools, text="Record audio", command=self.toggle_record)
+        self.rec_btn.grid(row=0, column=0)
+        self.rec_label = tk.Label(tools, text="00:00", bg=self.WHITE, fg=self.INK, font=("Consolas", 11))
+        self.rec_label.grid(row=0, column=1, padx=(10, 6))
+        self.level_canvas = tk.Canvas(tools, width=96, height=20, bg=self.WHITE, highlightthickness=0)
+        self.level_canvas.grid(row=0, column=2)
+        self._paint_input_level()
+        self.import_btn = ttk.Button(tools, text="Open audio file\u2026", command=self.open_audio)
+        self.import_btn.grid(row=0, column=3, padx=(10, 0))
+        self.gen_btn = ttk.Button(tools, text="Send", style="Primary.TButton", command=self.generate, width=6)
+        self.gen_btn.grid(row=0, column=5, sticky="e")
+        hint = tk.Frame(composer, bg=self.WHITE)
+        hint.grid(row=2, column=0, sticky="ew", pady=(6, 0))
+        hint.grid_columnconfigure(1, weight=1)
+        tk.Label(hint, text="Enter to send \u00b7 Shift+Enter for a new line", bg=self.WHITE, fg=self.MUTED,
+                 font=(self.face, 9)).grid(row=0, column=0, sticky="w")
+        tk.Label(hint, textvariable=self.stage, bg=self.WHITE, fg=self.MUTED,
+                 font=(self.face, 9)).grid(row=0, column=1, sticky="e")
         self._build_settings()
         footer = tk.Frame(self, bg=self.BG)
         footer.grid(row=1, column=1, sticky="ew", padx=28, pady=(0, 14))
@@ -371,6 +378,9 @@ class AudioWorkspaceUI:
         self.bind("<Escape>", lambda event: self.show_workspace())
         self.capture_status.trace_add("write", lambda *_: self._privacy_changed())
         self.question_var.trace_add("write", lambda *_: self._sync_controls())
+        self.question_var.trace_add("write", lambda *_: self._fit_prompt())
+        self.transcript_count.trace_add("write", lambda *_: self._sync_context_button())
+        self._sync_context_button()
         self.allow_web.trace_add("write", lambda *_: self.answer_mode.set(
             "Automatic · web queries may go online." if self.allow_web.get()
             else "Web access disabled in Settings."))
@@ -385,7 +395,7 @@ class AudioWorkspaceUI:
         style = ttk.Style(self)
         style.theme_use("clam")
         style.configure(".", font=(self.face, 10), background=self.BG, foreground=self.INK)
-        style.configure("TButton", padding=(14, 9), background=self.WHITE, foreground=self.INK,
+        style.configure("TButton", padding=(12, 5), background=self.WHITE, foreground=self.INK,
                         bordercolor=self.CONTROL_BORDER, lightcolor=self.WHITE, darkcolor=self.WHITE,
                         focuscolor=self.ACCENT, borderwidth=1, relief="flat")
         style.map("TButton", background=[("disabled", "#F1F2F7"), ("active", self.SURFACE_ALT)],
@@ -400,17 +410,17 @@ class AudioWorkspaceUI:
         style.configure("Recording.TButton", background=self.RED, foreground=self.WHITE,
                         bordercolor=self.RED, lightcolor=self.RED, darkcolor=self.RED)
         style.map("Recording.TButton", background=[("active", "#9F1D1D")], foreground=[("!disabled", self.WHITE)])
-        style.configure("Quiet.TButton", borderwidth=0, background=self.WHITE, foreground=self.ACCENT_DARK, padding=(10, 6), width=0)
+        style.configure("Quiet.TButton", borderwidth=0, background=self.WHITE, foreground=self.ACCENT_DARK, padding=(8, 3), width=0)
         style.map("Quiet.TButton", background=[("disabled", self.WHITE), ("active", self.ACCENT_SOFT)],
                   foreground=[("disabled", "#8A90A5")])
-        style.configure("Suggestion.TButton", padding=(12, 6), font=(self.face, 9, "bold"), background=self.WHITE,
+        style.configure("Suggestion.TButton", padding=(10, 3), font=(self.face, 9, "bold"), background=self.WHITE,
                         foreground=self.ACCENT_DARK, borderwidth=1, bordercolor=self.CONTROL_BORDER)
         style.map("Suggestion.TButton", background=[("disabled", "#F1F2F7"), ("active", self.ACCENT_SOFT)],
                   foreground=[("disabled", "#8A90A5")])
         style.configure("TEntry", fieldbackground=self.WHITE, bordercolor=self.CONTROL_BORDER,
-                        lightcolor=self.WHITE, darkcolor=self.WHITE, borderwidth=1, padding=9)
+                        lightcolor=self.WHITE, darkcolor=self.WHITE, borderwidth=1, padding=6)
         style.map("TEntry", bordercolor=[("focus", self.ACCENT)], lightcolor=[("focus", self.ACCENT)])
-        style.configure("TCombobox", padding=9, fieldbackground=self.WHITE,
+        style.configure("TCombobox", padding=6, fieldbackground=self.WHITE,
                         background=self.WHITE, bordercolor=self.CONTROL_BORDER,
                         lightcolor=self.WHITE, darkcolor=self.WHITE, borderwidth=1, arrowsize=14,
                         arrowcolor=self.MUTED)
@@ -421,8 +431,8 @@ class AudioWorkspaceUI:
         style.configure("White.TCheckbutton", background=self.WHITE, font=(self.face, 9))
         style.map("White.TCheckbutton", background=[("active", self.WHITE)])
         style.configure("TSeparator", background=self.LINE)
-        style.configure("TPanedwindow", background=self.BG, sashwidth=20)
-        style.configure("Sash", sashthickness=20, gripcount=0)
+        style.configure("TPanedwindow", background=self.BG, sashwidth=12)
+        style.configure("Sash", sashthickness=12, gripcount=0)
         for orient in ("Vertical", "Horizontal"):
             style.configure(f"{orient}.TScrollbar", background="#D3D7E6", troughcolor=self.WHITE,
                             bordercolor=self.WHITE, lightcolor="#D3D7E6", darkcolor="#D3D7E6",
@@ -433,7 +443,7 @@ class AudioWorkspaceUI:
     def _nav_button(self, parent, text, command):
         button = tk.Button(parent, text=text, anchor="w", command=command, bg=self.WHITE, fg=self.NAV_FG,
                            activebackground=self.ACCENT_SOFT, activeforeground=self.ACCENT_DARK, relief="flat", bd=0,
-                           padx=16, pady=10, cursor="hand2", highlightthickness=1,
+                           padx=12, pady=7, cursor="hand2", highlightthickness=1,
                            highlightbackground=self.WHITE, highlightcolor=self.ACCENT, takefocus=True,
                            font=(self.face, 10))
         button.pack(fill="x", pady=2)
@@ -449,7 +459,7 @@ class AudioWorkspaceUI:
         return tk.Frame(parent, bg=self.WHITE, highlightbackground=self.LINE, highlightthickness=1)
 
     def _panel_header(self, parent, title):
-        header = tk.Frame(parent, bg=self.WHITE, padx=14, pady=12)
+        header = tk.Frame(parent, bg=self.WHITE, padx=14, pady=8)
         header.grid(row=0, column=0, sticky="ew")
         tk.Label(header, text=title, bg=self.WHITE, fg=self.INK, font=(self.face, 12, "bold")).pack(side="left", padx=4)
         return header
@@ -468,7 +478,7 @@ class AudioWorkspaceUI:
         text.configure(yscrollcommand=scrollbar.set)
         return text
 
-    def _add_empty_state(self, text, title, description):
+    def _add_empty_state(self, text, title, description, width=260):
         empty = tk.Frame(text, bg=self.WHITE)
         icon = tk.Canvas(empty, width=52, height=52, bg=self.WHITE, highlightthickness=0)
         self._round_rect(icon, 0, 0, 52, 52, 16, fill=self.ACCENT_SOFT, outline=self.ACCENT_SOFT)
@@ -476,14 +486,15 @@ class AudioWorkspaceUI:
             icon.create_line(x, 26-half, x, 26+half, fill=self.ACCENT, width=3, capstyle="round")
         icon.pack(pady=(0, 14))
         tk.Label(empty, text=title, bg=self.WHITE, fg=self.INK, font=(self.face, 14, "bold"),
-                 wraplength=260, justify="center").pack(pady=(0, 8))
+                 wraplength=width, justify="center").pack(pady=(0, 8))
         tk.Label(empty, text=description, bg=self.WHITE, fg=self.MUTED, font=(self.face, 10),
-                 wraplength=260, justify="center").pack()
+                 wraplength=width, justify="center").pack()
         self._placeholders[text] = empty
+        self._placeholder_widths[text] = width
         text.bind("<Configure>", lambda event: self._refresh_empty_states(), add="+")
         for widget in (empty, *empty.winfo_children()):
             widget.bind("<Button-1>", lambda event, target=text: target.focus_set())
-        empty.place(relx=0.5, rely=0.32, anchor="center", width=260)
+        empty.place(relx=0.5, rely=0.32, anchor="center", width=width)
 
     def _refresh_empty_states(self):
         if getattr(self, "_closing", False):
@@ -500,7 +511,7 @@ class AudioWorkspaceUI:
                 empty.place_forget()
             else:
                 empty.place(relx=0.5, rely=0.5 if text.winfo_height() < 250 else 0.32,
-                            anchor="center", width=260)
+                            anchor="center", width=self._placeholder_widths.get(text, 260))
 
     def _transcript_modified(self, event=None):
         if not self.transcript.edit_modified():
@@ -508,15 +519,51 @@ class AudioWorkspaceUI:
         self.transcript.edit_modified(False)
         words = len(self.transcript.get("1.0", "end").split())
         self.transcript_count.set(f"{words:,} {'word' if words == 1 else 'words'}")
+        if words and not self._context_visible:
+            self._set_context_visible(True)
         if words and self._source.get() == "No audio added":
             self._source.set("Pasted or typed text")
         self._refresh_empty_states()
         self._sync_controls()
 
     def _initial_split(self):
+        self._split_context()
+
+    def _split_context(self):
         self.update_idletasks()
-        if self.panes.winfo_width() > 100:
-            self.panes.sashpos(0, int(self.panes.winfo_width() * 0.43))
+        width = self.panes.winfo_width()
+        if self._context_visible and width > 100:
+            self.panes.sashpos(0, max(280, min(int(width * 0.64), width - 300)))
+
+    def _set_context_visible(self, visible):
+        if visible == self._context_visible:
+            return
+        self._context_visible = visible
+        if visible:
+            self.panes.add(self._context_panel, weight=1)
+            self.after_idle(self._split_context)
+        else:
+            self.panes.forget(self._context_panel)
+        self._sync_context_button()
+        self.after_idle(self._refresh_empty_states)
+
+    def toggle_context(self):
+        self._set_context_visible(not self._context_visible)
+        if self._context_visible:
+            self.transcript.focus_set()
+
+    def _sync_context_button(self):
+        if hasattr(self, "context_btn"):
+            self.context_btn.configure(text=f"Context \u00b7 {self.transcript_count.get()}",
+                                       style="Suggestion.TButton" if self._context_visible else "TButton")
+
+    def _fit_prompt(self):
+        try:
+            counted = self.question_entry.count("1.0", "end-1c", "displaylines")
+            lines = counted[0] if isinstance(counted, (tuple, list)) else (counted or 1)
+            self.question_entry.configure(height=max(2, min(6, int(lines))))
+        except (tk.TclError, TypeError, ValueError):
+            pass
 
     def show_workspace(self):
         self._view = "workspace"
@@ -533,6 +580,7 @@ class AudioWorkspaceUI:
         self._set_nav(self.settings_nav, True)
 
     def _build_settings(self):
+        self._wrap_labels = []
         self.settings_panel = tk.Frame(self.content, bg=self.BG)
         self.settings_panel.grid_columnconfigure(0, weight=1)
         self.settings_panel.grid_rowconfigure(0, weight=1)
@@ -542,41 +590,65 @@ class AudioWorkspaceUI:
         scroll.grid(row=0, column=1, sticky="ns")
         canvas.configure(yscrollcommand=scroll.set)
         body = tk.Frame(canvas, bg=self.BG)
-        body.grid_columnconfigure(0, weight=1)
+        body.grid_columnconfigure((0, 1), weight=1, uniform="settings")
         window = canvas.create_window(0, 0, window=body, anchor="nw")
         body.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window, width=min(event.width, 820)))
-        tk.Label(body, text="Settings", bg=self.BG, fg=self.INK,
-                 font=(self.face, 24, "bold")).grid(row=0, column=0, sticky="w")
-        tk.Label(body, text="Your models, preferences, and screen privacy.", bg=self.BG,
-                 fg=self.MUTED, font=(self.face, 11)).grid(row=1, column=0, sticky="w", pady=(5, 20))
-        def card(title, row):
-            outer = tk.Frame(body, bg=self.WHITE, highlightbackground=self.LINE, highlightthickness=1)
-            outer.grid(row=row, column=0, sticky="ew", pady=(0, 16))
+
+        def resize(event):
+            width = min(event.width, 1120)
+            canvas.itemconfigure(window, width=width)
+            wrap = max(220, (width - 16) // 2 - 48)
+            for label, offset in self._wrap_labels:
+                label.configure(wraplength=max(140, wrap - offset))
+        canvas.bind("<Configure>", resize)
+        head = tk.Frame(body, bg=self.BG)
+        head.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(6, 14))
+        head.grid_columnconfigure(0, weight=1)
+        titles = tk.Frame(head, bg=self.BG)
+        titles.grid(row=0, column=0, sticky="w")
+        tk.Label(titles, text="Settings", bg=self.BG, fg=self.INK,
+                 font=(self.face, 16, "bold")).pack(side="left")
+        tk.Label(titles, text="Your models, preferences, and screen privacy.", bg=self.BG,
+                 fg=self.MUTED, font=(self.face, 10)).pack(side="left", padx=(14, 0), pady=(4, 0))
+        ttk.Button(head, text="Back to workspace", command=self.show_workspace, width=0).grid(row=0, column=1, sticky="e")
+        left_col = tk.Frame(body, bg=self.BG)
+        left_col.grid(row=1, column=0, sticky="new", padx=(0, 8))
+        right_col = tk.Frame(body, bg=self.BG)
+        right_col.grid(row=1, column=1, sticky="new", padx=(8, 0))
+
+        def card(title, parent):
+            outer = tk.Frame(parent, bg=self.WHITE, highlightbackground=self.LINE, highlightthickness=1)
+            outer.pack(fill="x", pady=(0, 14))
             outer.grid_columnconfigure(0, weight=1)
-            inner = tk.Frame(outer, bg=self.WHITE, padx=24, pady=20)
+            inner = tk.Frame(outer, bg=self.WHITE, padx=20, pady=14)
             inner.grid(row=0, column=0, sticky="ew")
             inner.grid_columnconfigure(0, weight=1)
             tk.Label(inner, text=title, bg=self.WHITE, fg=self.INK,
-                     font=(self.face, 13, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 14))
+                     font=(self.face, 12, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 10))
             content = tk.Frame(inner, bg=self.WHITE)
             content.grid(row=1, column=0, sticky="ew")
             content.grid_columnconfigure(0, weight=1)
             return content
 
+        def note(parent, row, text=None, variable=None, pady=(0, 0)):
+            label = tk.Label(parent, text=text, textvariable=variable, bg=self.WHITE, fg=self.MUTED,
+                             wraplength=420, justify="left", anchor="w", font=(self.face, 10))
+            label.grid(row=row, column=0, sticky="ew", pady=pady)
+            self._wrap_labels.append((label, 0))
+            return label
+
         # Card 1: AI model
-        ai = card("AI model", 2)
+        ai = card("AI model", left_col)
         provider_frame = tk.Frame(ai, bg=self.WHITE)
-        provider_frame.grid(row=0, column=0, sticky="ew", pady=(0, 18))
+        provider_frame.grid(row=0, column=0, sticky="ew", pady=(0, 14))
         provider_frame.grid_columnconfigure(0, weight=1)
         self._field_label(provider_frame, "Answer provider", 0)
         self.provider_box = ttk.Combobox(provider_frame, textvariable=self.provider_var,
                                          values=list(LABELS.values()), state="readonly")
-        self.provider_box.grid(row=1, column=0, sticky="ew", pady=(8, 8))
+        self.provider_box.grid(row=1, column=0, sticky="ew", pady=(6, 6))
         self.provider_box.bind("<<ComboboxSelected>>", self._provider_changed)
         self.provider_description = tk.StringVar()
-        tk.Label(provider_frame, textvariable=self.provider_description, bg=self.WHITE,
-                 fg=self.MUTED, wraplength=700, justify="left", anchor="w").grid(row=2, column=0, sticky="ew")
+        note(provider_frame, 2, variable=self.provider_description)
         self.key_frame = tk.Frame(provider_frame, bg=self.WHITE)
         self.key_frame.grid(row=3, column=0, sticky="ew", pady=(12, 0))
         self.key_frame.grid_columnconfigure(0, weight=1)
@@ -585,73 +657,71 @@ class AudioWorkspaceUI:
         self.key_entry.grid(row=1, column=0, sticky="ew", pady=(6, 0))
         self.key_save = ttk.Button(self.key_frame, text="Save key securely", command=self._save_groq_key)
         self.key_save.grid(row=1, column=1, padx=(12, 0), pady=(6, 0))
-        tk.Label(self.key_frame, text="Used for this session immediately. Save encrypts it with your Windows account. Clear and save to forget it.",
-                 bg=self.WHITE, fg=self.MUTED, wraplength=700, justify="left").grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        key_note = tk.Label(self.key_frame, text="Used for this session immediately. Save encrypts it with your Windows account. Clear and save to forget it.",
+                            bg=self.WHITE, fg=self.MUTED, wraplength=420, justify="left")
+        key_note.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self._wrap_labels.append((key_note, 0))
         self._update_provider_description()
         model = tk.Frame(ai, bg=self.WHITE)
         model.grid(row=1, column=0, sticky="ew")
         model.grid_columnconfigure(0, weight=1)
         self._field_label(model, "Answer model", 0)
         model_row = tk.Frame(model, bg=self.WHITE)
-        model_row.grid(row=1, column=0, sticky="ew", pady=(8, 4))
+        model_row.grid(row=1, column=0, sticky="ew", pady=(6, 4))
         model_row.grid_columnconfigure(0, weight=1)
         self.model_box = ttk.Combobox(model_row, textvariable=self.model_var, state="normal", width=24)
         self.model_box.grid(row=0, column=0, sticky="ew")
         self.model_box.bind("<<ComboboxSelected>>", self._model_changed)
         self.model_box.bind("<FocusOut>", self._model_changed)
         ttk.Button(model_row, text="Check connection", command=self.refresh_models).grid(row=0, column=1, padx=(12, 0))
-        tk.Label(model, textvariable=self.engine_detail, bg=self.WHITE, fg=self.MUTED, wraplength=700,
-                 justify="left", anchor="w", font=(self.face, 10)).grid(row=2, column=0, sticky="ew", pady=(4, 0))
+        note(model, 2, variable=self.engine_detail, pady=(4, 0))
 
         # Card 2: Speech & audio
-        audio = card("Speech & audio", 3)
+        audio = card("Speech & audio", right_col)
         pair = tk.Frame(audio, bg=self.WHITE)
         pair.grid(row=0, column=0, sticky="ew")
         pair.grid_columnconfigure((0, 1), weight=1, uniform="speech")
-        left_col = tk.Frame(pair, bg=self.WHITE)
-        left_col.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        left_col.grid_columnconfigure(0, weight=1)
-        self._field_label(left_col, "Recognition model", 0)
-        self.speech_model_box = ttk.Combobox(left_col, textvariable=self.whisper_var, state="readonly",
+        left_pick = tk.Frame(pair, bg=self.WHITE)
+        left_pick.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        left_pick.grid_columnconfigure(0, weight=1)
+        self._field_label(left_pick, "Recognition model", 0)
+        self.speech_model_box = ttk.Combobox(left_pick, textvariable=self.whisper_var, state="readonly",
                                              values=SPEECH_MODELS)
-        self.speech_model_box.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        self.speech_model_box.grid(row=1, column=0, sticky="ew", pady=(6, 0))
         self.speech_model_box.bind("<<ComboboxSelected>>", lambda event: self._save_web_preference())
-        right_col = tk.Frame(pair, bg=self.WHITE)
-        right_col.grid(row=0, column=1, sticky="ew", padx=(8, 0))
-        right_col.grid_columnconfigure(0, weight=1)
-        self._field_label(right_col, "Spoken language", 0)
-        self.speech_language_box = ttk.Combobox(right_col, textvariable=self.speech_language,
+        right_pick = tk.Frame(pair, bg=self.WHITE)
+        right_pick.grid(row=0, column=1, sticky="ew", padx=(8, 0))
+        right_pick.grid_columnconfigure(0, weight=1)
+        self._field_label(right_pick, "Spoken language", 0)
+        self.speech_language_box = ttk.Combobox(right_pick, textvariable=self.speech_language,
                                                 values=list(LANGUAGES), state="readonly")
-        self.speech_language_box.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        self.speech_language_box.grid(row=1, column=0, sticky="ew", pady=(6, 0))
         self.speech_language_box.bind("<<ComboboxSelected>>", lambda event: self._save_web_preference())
-        tk.Label(audio, text="Small.en favors English accuracy. Tiny is faster but less accurate.", bg=self.WHITE,
-                 fg=self.MUTED, wraplength=700, justify="left", anchor="w", font=(self.face, 10)).grid(row=1, column=0, sticky="ew", pady=(10, 0))
-        tk.Label(audio, textvariable=self.speech_feedback, bg=self.WHITE, fg=self.MUTED,
-                 wraplength=700, justify="left", anchor="w", font=(self.face, 10)).grid(row=2, column=0, sticky="ew", pady=(2, 14))
+        note(audio, 1, text="Small.en favors English accuracy. Tiny is faster but less accurate.", pady=(10, 0))
+        note(audio, 2, variable=self.speech_feedback, pady=(2, 12))
         self._toggle_row(audio, 3, "Fast transcription", "Turn off for difficult audio.",
                          self.fast_transcription, self._save_web_preference)
         title_box = tk.Frame(audio, bg=self.WHITE)
-        title_box.grid(row=4, column=0, sticky="ew", pady=(4, 14))
+        title_box.grid(row=4, column=0, sticky="ew", pady=(4, 12))
         title_box.grid_columnconfigure(0, weight=1)
         self._field_label(title_box, "Audio title (optional)", 0)
-        ttk.Entry(title_box, textvariable=self.title_var).grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        ttk.Entry(title_box, textvariable=self.title_var).grid(row=1, column=0, sticky="ew", pady=(6, 0))
         self._toggle_row(audio, 5, "Answer automatically after transcription",
                          "Reply as soon as your audio has been transcribed.", self.auto_answer)
 
         # Card 3: Screen privacy
-        privacy = card("Screen privacy", 4)
+        privacy = card("Screen privacy", right_col)
         self.capture_toggle = self._toggle_row(
             privacy, 0, "Exclude this window from screen capture",
             "Applies to the main window in compatible Windows capture tools. Test before sharing.",
             self.capture_excluded, self._apply_capture_exclusion, divider=False)
-        tk.Label(privacy, textvariable=self.capture_status, bg=self.WHITE, fg=self.MUTED, wraplength=700,
-                 justify="left", anchor="w", font=(self.face, 10)).grid(row=1, column=0, sticky="ew")
+        note(privacy, 1, variable=self.capture_status)
         if sys.platform == "win32":
             ttk.Button(privacy, text="Hide taskbar button", command=self.hide_to_tray).grid(
-                row=2, column=0, sticky="w", pady=(12, 0))
+                row=2, column=0, sticky="w", pady=(10, 0))
 
         # Card 4: Web search
-        web = card("Web search", 5)
+        web = card("Web search", left_col)
         self._toggle_row(web, 0, "Allow automatic web search",
                          "Short search queries may include your question or relevant context. Audio files are not uploaded.",
                          self.allow_web, self._save_web_preference, divider=False)
@@ -659,7 +729,8 @@ class AudioWorkspaceUI:
             self.capture_toggle.state(["disabled"])
             self.capture_status.set("Unavailable on this platform")
         tk.Label(body, text="Changes apply immediately.   Ctrl+, opens settings.   Esc returns to your workspace.",
-                 bg=self.BG, fg=self.MUTED, font=(self.face, 9), wraplength=600, justify="left").grid(row=6, column=0, sticky="w", pady=6)
+                 bg=self.BG, fg=self.MUTED, font=(self.face, 9), wraplength=600, justify="left").grid(
+                     row=2, column=0, columnspan=2, sticky="w", pady=6)
         def wheel(event):
             if canvas.bbox("all")[3] > canvas.winfo_height():
                 canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
@@ -688,8 +759,11 @@ class AudioWorkspaceUI:
         text.pack(side="left", fill="x", expand=True)
         tk.Label(text, text=title, bg=self.WHITE, fg=self.INK, font=(self.face, 10, "bold"),
                  justify="left", anchor="w").pack(anchor="w")
-        tk.Label(text, text=description, bg=self.WHITE, fg=self.MUTED, font=(self.face, 9),
-                 wraplength=560, justify="left", anchor="w").pack(anchor="w", pady=(2, 0))
+        detail = tk.Label(text, text=description, bg=self.WHITE, fg=self.MUTED, font=(self.face, 9),
+                          wraplength=360, justify="left", anchor="w")
+        detail.pack(anchor="w", pady=(2, 0))
+        if hasattr(self, "_wrap_labels"):
+            self._wrap_labels.append((detail, 76))
         return toggle
 
     def _save_web_preference(self):
@@ -788,7 +862,7 @@ class AudioWorkspaceUI:
         self.new_chat_btn.configure(state="disabled" if locked else "normal")
         self.clear_btn.configure(state="normal" if has_text and not locked else "disabled")
         self.rec_btn.configure(state="disabled" if self.busy else "normal",
-                               style="Recording.TButton" if self.recording else "Primary.TButton")
+                               style="Recording.TButton" if self.recording else "TButton")
         self.gen_btn.configure(style="Primary.TButton")
         for button in (self.copy_btn, self.save_btn):
             button.configure(state="normal" if has_answer and not self.busy else "disabled")
@@ -797,12 +871,12 @@ class AudioWorkspaceUI:
         canvas = self.level_canvas
         canvas.delete("all")
         if not self.recording:
-            canvas.create_line(0, 12, 168, 12, fill="#d4d4d4", width=1)
+            canvas.create_line(0, 10, 96, 10, fill="#d4d4d4", width=1)
             return
         level = max(0.0, min(1.0, self._audio_level))
         for i, factor in enumerate([0.35, 0.55, 0.8, 0.65, 1, 0.75, 0.5, 0.85, 0.6, 0.4, 0.7, 0.3]):
-            height = max(2, int(22 * level * factor))
-            canvas.create_line(4+i*14, 12-height/2, 4+i*14, 12+height/2, fill=self.BLUE, width=4)
+            height = max(2, int(18 * level * factor))
+            canvas.create_line(4+i*8, 10-height/2, 4+i*8, 10+height/2, fill=self.BLUE, width=3)
 
     def _privacy_changed(self):
         value = self.capture_status.get()

@@ -125,6 +125,35 @@ def set_taskbar_button(window_id, visible):
         if was_visible:
             user32.ShowWindow(hwnd, 8)  # SW_SHOWNA: preserve placement and activation
 
+
+def enable_minimize_button(window_id):
+    """Show the standard Windows minimize control in the title bar."""
+    if sys.platform != "win32":
+        return
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    get_long = getattr(user32, "GetWindowLongPtrW", user32.GetWindowLongW)
+    set_long = getattr(user32, "SetWindowLongPtrW", user32.SetWindowLongW)
+    get_long.argtypes = [wintypes.HWND, ctypes.c_int]
+    get_long.restype = ctypes.c_ssize_t
+    set_long.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
+    set_long.restype = ctypes.c_ssize_t
+    user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
+    user32.GetAncestor.restype = wintypes.HWND
+    user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+                                    ctypes.c_int, ctypes.c_int, wintypes.UINT]
+    user32.SetWindowPos.restype = wintypes.BOOL
+    hwnd = user32.GetAncestor(window_id, 2)
+    if not hwnd:
+        raise ctypes.WinError(ctypes.get_last_error())
+    style = get_long(hwnd, -16)  # GWL_STYLE
+    style |= 0x00020000  # WS_MINIMIZEBOX
+    ctypes.set_last_error(0)
+    previous = set_long(hwnd, -16, style)
+    if not previous and ctypes.get_last_error():
+        raise ctypes.WinError(ctypes.get_last_error())
+    if not user32.SetWindowPos(hwnd, None, 0, 0, 0, 0, 0x37):
+        raise ctypes.WinError(ctypes.get_last_error())
+
 SYSTEM_PROMPT = """You are Jarvis, a helpful general-purpose assistant.
 Help with questions, explanations, writing, programming, mathematics, and reasoning.
 Answer directly and clearly. Infer the useful intent behind short topic prompts as well as explicit questions.
@@ -169,6 +198,7 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
             except (AttributeError, OSError):
                 pass
         super().__init__()
+        self.attributes("-topmost", True)
         self.title("Jarvis — Assistant")
         # The reference Settings layout is tall: an 800px cap cuts off its lower
         # controls even on displays with room to show them. Keep its proportions
@@ -195,6 +225,9 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
         self._expanded_state = "normal"
 
         self._build_ui()
+        if sys.platform == "win32":
+            self.after_idle(lambda: enable_minimize_button(self.winfo_id()))
+            self._create_titlebar_minimize()
         self.protocol("WM_DELETE_WINDOW", self._close)
         self.bind("<Map>", self._on_window_mapped, add="+")
         self.bind("<Unmap>", self._on_window_unmapped, add="+")
@@ -206,6 +239,35 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
     def _remember_window_state(self, event):
         if event.widget is self and not self._collapsed and self.state() in ("normal", "zoomed"):
             self._expanded_state = self.state()
+            if hasattr(self, "_titlebar_minimize"):
+                self.after_idle(self._position_titlebar_minimize)
+
+    def _create_titlebar_minimize(self):
+        """Provide a minimize control even while Windows uses tool-window style."""
+        button = tk.Toplevel(self)
+        button.withdraw()
+        button.overrideredirect(True)
+        button.attributes("-topmost", True)
+        button.configure(bg="#f0f0f0")
+        tk.Button(button, text="—", command=self.collapse_to_icon, relief="flat", bd=0,
+                  bg="#f0f0f0", activebackground="#d8d8d8", fg="#222222",
+                  font=("Segoe UI", 10), takefocus=False).pack(fill="both", expand=True)
+        self._titlebar_minimize = button
+        self.after_idle(self._position_titlebar_minimize)
+
+    def _position_titlebar_minimize(self):
+        button = getattr(self, "_titlebar_minimize", None)
+        if button is None or self._collapsed or self.state() not in ("normal", "zoomed"):
+            if button is not None:
+                button.withdraw()
+            return
+        # The standard Windows close button is about 30px wide; place this
+        # control immediately to its left in the title bar.
+        x = self.winfo_rootx() + self.winfo_width() - 60
+        y = self.winfo_rooty() + 3
+        button.geometry(f"30x25+{x}+{y}")
+        button.deiconify()
+        button.lift()
 
     def _on_window_unmapped(self, event):
         if event.widget is self and not self._closing and not getattr(self, "_taskbar_transition", False):
@@ -237,6 +299,8 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
                 self._floating_icon = bubble
             self._floating_icon.deiconify()
             self._floating_icon.lift()
+            if hasattr(self, "_titlebar_minimize"):
+                self._titlebar_minimize.withdraw()
             if sys.platform == "win32":
                 try:
                     set_capture_exclusion(self._floating_icon.winfo_id(), self.capture_excluded.get())
@@ -272,6 +336,8 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
         # widgets here: their grid placement belongs to _build_ui().
         self.lift()
         self.focus_set()
+        if hasattr(self, "_titlebar_minimize"):
+            self.after_idle(self._position_titlebar_minimize)
 
     def _on_window_mapped(self, event):
         if event.widget is self and self.state() in ("normal", "zoomed"):
