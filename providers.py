@@ -85,7 +85,7 @@ def codex_client():
     workspace.mkdir(parents=True, exist_ok=True)
     return Codex(CodexConfig(cwd=str(workspace), config_overrides=CODEX_OVERRIDES,
                             env={"GROQ_API_KEY": "", "OPENAI_API_KEY": ""},
-                            client_name="jarvis", client_title="Jarvis"))
+                            client_name="mocha", client_title="Mocha"))
 
 
 def check_codex_account(client):

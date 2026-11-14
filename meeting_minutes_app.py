@@ -1,5 +1,5 @@
 """
-Jarvis - audio and general chat with selectable answer providers.
+Mocha - audio and general chat with selectable answer providers.
 
 What it does
   1. Ask general questions or use microphone/file audio as optional context.
@@ -25,8 +25,8 @@ Screen capture privacy
   requests capture exclusion by default. Use the checkbox to turn it off.
   The adjacent indicator reports whether Windows confirmed the setting.
   Capture tools vary: verify with your meeting app before sharing sensitive
-  notes. Separate system dialogs (such as Save and error dialogs) are not
-  covered. Other operating systems currently have no capture exclusion here.
+  notes. Mocha-owned dropdown popups are included; standalone system dialogs
+  may not be covered. Other operating systems currently have no capture exclusion.
 """
 
 import datetime
@@ -51,7 +51,7 @@ from processing import DEFAULT_CONTEXT, MODEL_KEEP_ALIVE, context_size_for_reque
 SAMPLE_RATE = 16000
 
 
-def set_capture_exclusion(window_id, enabled):
+def set_capture_exclusion(window_id, enabled, direct_window=False):
     """Set and verify affinity on Tk's native top-level Windows wrapper."""
     if sys.platform != "win32":
         raise RuntimeError("Capture exclusion is available only on Windows.")
@@ -66,7 +66,7 @@ def set_capture_exclusion(window_id, enabled):
     user32.GetWindowDisplayAffinity.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
     user32.GetWindowDisplayAffinity.restype = wintypes.BOOL
 
-    hwnd = user32.GetAncestor(window_id, 2)  # GA_ROOT: Tk's decorated top-level HWND
+    hwnd = window_id if direct_window else user32.GetAncestor(window_id, 2)  # GA_ROOT: Tk's decorated top-level HWND
     if not hwnd:
         raise ctypes.WinError(ctypes.get_last_error())
     affinity = 0x00000011 if enabled else 0x00000000
@@ -77,6 +77,48 @@ def set_capture_exclusion(window_id, enabled):
         raise ctypes.WinError(ctypes.get_last_error())
     if actual.value != affinity:
         raise RuntimeError("Windows did not confirm the requested display affinity.")
+
+
+def set_owned_popup_capture_exclusion(window_id, enabled):
+    """Apply capture exclusion to every visible top-level window in this process."""
+    if sys.platform != "win32":
+        return []
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
+    user32.GetAncestor.restype = wintypes.HWND
+    user32.GetWindow.argtypes = [wintypes.HWND, wintypes.UINT]
+    user32.GetWindow.restype = wintypes.HWND
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.GetCurrentProcessId.restype = wintypes.DWORD
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.IsWindowVisible.restype = wintypes.BOOL
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.EnumWindows.argtypes = [callback_type, wintypes.LPARAM]
+    user32.EnumWindows.restype = wintypes.BOOL
+    root = user32.GetAncestor(window_id, 2)
+    if not root:
+        raise ctypes.WinError(ctypes.get_last_error())
+    process_id = kernel32.GetCurrentProcessId()
+    errors = []
+
+    @callback_type
+    def visit(hwnd, unused):
+        if hwnd == root or not user32.IsWindowVisible(hwnd):
+            return True
+        window_process = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(window_process))
+        if window_process.value == process_id:
+            try:
+                set_capture_exclusion(hwnd, enabled, direct_window=True)
+            except (OSError, RuntimeError) as error:
+                errors.append(str(error))
+        return True
+
+    if not user32.EnumWindows(visit, 0):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return errors
 
 
 def set_taskbar_button(window_id, visible):
@@ -154,7 +196,7 @@ def enable_minimize_button(window_id):
     if not user32.SetWindowPos(hwnd, None, 0, 0, 0, 0, 0x37):
         raise ctypes.WinError(ctypes.get_last_error())
 
-SYSTEM_PROMPT = """You are Jarvis, a helpful general-purpose assistant.
+SYSTEM_PROMPT = """You are Mocha, a helpful general-purpose assistant.
 Help with questions, explanations, writing, programming, mathematics, and reasoning.
 Answer directly and clearly. Infer the useful intent behind short topic prompts as well as explicit questions.
 Treat a bare topic as a request to understand and use it, not merely as a request for a dictionary definition.
@@ -199,7 +241,7 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
                 pass
         super().__init__()
         self.attributes("-topmost", True)
-        self.title("Jarvis — Assistant")
+        self.title("Mocha — Assistant")
         # The reference Settings layout is tall: an 800px cap cuts off its lower
         # controls even on displays with room to show them. Keep its proportions
         # where possible and retain scrolling on smaller desktops.
@@ -227,7 +269,9 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
         self._build_ui()
         if sys.platform == "win32":
             self.after_idle(lambda: enable_minimize_button(self.winfo_id()))
-            self._create_titlebar_minimize()
+            self.bind_all("<ButtonPress-1>", self._schedule_capture_popup_refresh, add="+")
+            self.bind_all("<Alt-Down>", self._schedule_capture_popup_refresh, add="+")
+            self.bind_all("<F4>", self._schedule_capture_popup_refresh, add="+")
         self.protocol("WM_DELETE_WINDOW", self._close)
         self.bind("<Map>", self._on_window_mapped, add="+")
         self.bind("<Unmap>", self._on_window_unmapped, add="+")
@@ -239,54 +283,33 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
     def _remember_window_state(self, event):
         if event.widget is self and not self._collapsed and self.state() in ("normal", "zoomed"):
             self._expanded_state = self.state()
-            if hasattr(self, "_titlebar_minimize"):
-                self.after_idle(self._position_titlebar_minimize)
+            self.after_idle(self._sync_tool_minimize)
 
-    def _create_titlebar_minimize(self):
-        """Provide a minimize control even while Windows uses tool-window style."""
-        button = tk.Toplevel(self)
-        button.withdraw()
-        button.overrideredirect(True)
-        button.attributes("-topmost", True)
-        button.configure(bg="#f0f0f0")
-        tk.Button(button, text="—", command=self.collapse_to_icon, relief="flat", bd=0,
-                  bg="#f0f0f0", activebackground="#d8d8d8", fg="#222222",
-                  font=("Segoe UI", 10), takefocus=False).pack(fill="both", expand=True)
-        self._titlebar_minimize = button
-        self.after_idle(self._position_titlebar_minimize)
-
-    def _position_titlebar_minimize(self):
-        button = getattr(self, "_titlebar_minimize", None)
-        if button is None or self._collapsed or self.state() not in ("normal", "zoomed"):
+    def _sync_tool_minimize(self):
+        """Tool captions omit minimize; supply it only in that caption mode."""
+        button = getattr(self, '_tool_minimize', None)
+        visible = (sys.platform == 'win32' and not self._collapsed
+                   and self.state() in ('normal', 'zoomed')
+                   and bool(self.attributes('-toolwindow')))
+        if not visible:
             if button is not None:
                 button.withdraw()
             return
-        # Read the native caption-button bounds so the overlay stays in the
-        # title bar at any DPI, including after the taskbar style changes.
-        x = self.winfo_rootx() + self.winfo_width() - 60
-        y = self.winfo_rooty() - 28
-        width, height = 30, 25
-        try:
-            user32 = ctypes.WinDLL("user32", use_last_error=True)
-            user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
-            user32.GetAncestor.restype = wintypes.HWND
-            hwnd = user32.GetAncestor(self.winfo_id(), 2)
-            window_rect = wintypes.RECT()
-            if hwnd and user32.GetWindowRect(hwnd, ctypes.byref(window_rect)):
-                dwmapi = ctypes.WinDLL("dwmapi", use_last_error=True)
-                get_attribute = dwmapi.DwmGetWindowAttribute
-                get_attribute.argtypes = [wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
-                get_attribute.restype = ctypes.c_long
-                caption = wintypes.RECT()
-                result = get_attribute(hwnd, 5, ctypes.byref(caption), ctypes.sizeof(caption))
-                if result == 0 and caption.right > caption.left and caption.bottom > caption.top:
-                    height = caption.bottom - caption.top
-                    width = height
-                    x = window_rect.left + caption.right - 2 * width
-                    y = window_rect.top + caption.top
-        except (AttributeError, OSError, tk.TclError):
-            pass
-        button.geometry(f"{width}x{height}+{x}+{y}")
+        if button is None:
+            button = tk.Toplevel(self)
+            button.withdraw()
+            button.overrideredirect(True)
+            button.attributes('-topmost', True)
+            tk.Button(button, text='−', command=self.collapse_to_icon,
+                      relief='flat', bd=0, bg='#f0f0f0', fg='#222222',
+                      activebackground='#d8d8d8', font=('Segoe UI', 11),
+                      takefocus=False).pack(fill='both', expand=True)
+            self._tool_minimize = button
+        user32 = ctypes.WinDLL('user32', use_last_error=True)
+        height = max(20, user32.GetSystemMetrics(51))
+        width = max(28, height)
+        button.geometry(f'{width}x{height}+{self.winfo_rootx()+self.winfo_width()-2*width}'
+                        f'+{max(0,self.winfo_rooty()-height)}')
         button.deiconify()
         button.lift()
 
@@ -302,6 +325,13 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
         """Collapse directly, including when a tool window has no minimize button."""
         if not self._closing and not self._collapsed:
             self._collapsed = True
+            # Withdraw floating children before their owner changes state. On
+            # Windows, a mapped owned popup can otherwise revive its minimized
+            # owner as an empty native frame on the next hover.
+            if hasattr(self, '_compact_chat'):
+                self._compact_chat.hide()
+            if getattr(self, '_tool_minimize', None) is not None:
+                self._tool_minimize.withdraw()
             self.withdraw()
             if self._floating_icon is None:
                 bubble = tk.Toplevel(self)
@@ -316,19 +346,17 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
                         bubble.wm_attributes("-transparentcolor", "#171717")
                     except tk.TclError:
                         pass
-                bubble.geometry(f"64x64+{max(0, self.winfo_screenwidth()-96)}+{max(0, self.winfo_screenheight()-160)}")
-                canvas = tk.Canvas(bubble, width=64, height=64, bg="#171717", highlightthickness=0, cursor="hand2")
+                bubble.geometry(f"128x128+{max(0, self.winfo_screenwidth()-160)}+{max(0, self.winfo_screenheight()-224)}")
+                from mocha_logo import MochaLogo
+                canvas = MochaLogo(bubble, self, bg="#171717")
                 canvas.pack(fill="both", expand=True)
-                canvas.create_oval(3, 3, 61, 61, fill="#242424", outline="#737373", width=2)
-                canvas.create_text(32, 32, text="J", fill="white", font=("Segoe UI", 25, "bold"))
                 canvas.bind("<ButtonPress-1>", self._floating_press)
                 canvas.bind("<B1-Motion>", self._floating_drag)
                 canvas.bind("<ButtonRelease-1>", self._floating_release)
+                canvas.bind("<Enter>", lambda event: self._show_floating_chat(), add="+")
                 self._floating_icon = bubble
             self._floating_icon.deiconify()
             self._floating_icon.lift()
-            if hasattr(self, "_titlebar_minimize"):
-                self._titlebar_minimize.withdraw()
             if sys.platform == "win32":
                 try:
                     set_capture_exclusion(self._floating_icon.winfo_id(), self.capture_excluded.get())
@@ -346,15 +374,28 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
         if abs(dx) + abs(dy) > 5:
             self._floating_moved = True
         if self._floating_moved:
-            x = min(max(0, window_x+dx), max(0, self.winfo_screenwidth()-64))
-            y = min(max(0, window_y+dy), max(0, self.winfo_screenheight()-64))
+            x = min(max(0, window_x+dx), max(0, self.winfo_screenwidth()-128))
+            y = min(max(0, window_y+dy), max(0, self.winfo_screenheight()-128))
             self._floating_icon.geometry(f"+{x}+{y}")
+            if hasattr(self, '_compact_chat'):
+                self._compact_chat.follow_logo(x, y)
 
     def _floating_release(self, event):
         if not self._floating_moved:
-            self._restore_full_window()
+            self._show_floating_chat(expanded=True)
+        self._floating_moved = False
+
+    def _show_floating_chat(self, expanded=False):
+        if not self._collapsed or self._closing:
+            return
+        if not hasattr(self, "_compact_chat"):
+            from floating_chat import FloatingChat
+            self._compact_chat = FloatingChat(self)
+        self._compact_chat.show(expanded)
 
     def _restore_full_window(self):
+        if hasattr(self, "_compact_chat"):
+            self._compact_chat.hide()
         if self._floating_icon is not None:
             self._floating_icon.withdraw()
         self._collapsed = False
@@ -364,31 +405,38 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
         # widgets here: their grid placement belongs to _build_ui().
         self.lift()
         self.focus_set()
-        if hasattr(self, "_titlebar_minimize"):
-            self.after_idle(self._position_titlebar_minimize)
+        self.after_idle(self._sync_tool_minimize)
 
     def _on_window_mapped(self, event):
+        if event.widget is self and self._collapsed:
+            # Only _restore_full_window may leave compact mode. Native owner
+            # mapping from a floating popup is not a request to restore.
+            self.withdraw()
+            return
         if event.widget is self and self.state() in ("normal", "zoomed"):
             self._expanded_state = self.state()
-            if self._collapsed:
-                self._collapsed = False
-                if self._floating_icon is not None:
-                    self._floating_icon.withdraw()
         if event.widget is self and sys.platform == "win32":
             self._apply_capture_exclusion()
 
     def _apply_capture_exclusion(self):
         targets = [self.winfo_id()]
-        for name in ("_titlebar_minimize", "_floating_icon"):
+        for name in ("_floating_icon", "_tool_minimize"):
             window = getattr(self, name, None)
             if window is not None:
                 targets.append(window.winfo_id())
+        if hasattr(self, "_compact_chat"):
+            targets.append(self._compact_chat.window.winfo_id())
         errors = []
         for window_id in targets:
             try:
                 set_capture_exclusion(window_id, self.capture_excluded.get())
             except (OSError, RuntimeError) as exc:
                 errors.append(str(exc))
+        try:
+            errors.extend(set_owned_popup_capture_exclusion(
+                self.winfo_id(), self.capture_excluded.get()))
+        except (OSError, RuntimeError) as exc:
+            errors.append(str(exc))
         if errors:
             self.capture_status.set(f"Capture exclusion not confirmed: {errors[0]}")
         else:
@@ -396,6 +444,11 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
                 "Exclusion enabled (compatible capture tools)"
                 if self.capture_excluded.get() else "Exclusion disabled"
             )
+
+    def _schedule_capture_popup_refresh(self, event=None):
+        if self.capture_excluded.get() and not self._closing:
+            self.after(120, self._apply_capture_exclusion)
+            self.after(450, self._apply_capture_exclusion)
 
     def _set_taskbar_visible(self, visible):
         """Let Tk manage mapping so native hide events cannot strand the window."""
@@ -413,7 +466,8 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
                 self.lift()
             finally:
                 self._taskbar_transition = False
-                self.after_idle(self._position_titlebar_minimize)
+                self.after_idle(lambda: enable_minimize_button(self.winfo_id()))
+                self.after_idle(self._sync_tool_minimize)
                 self.after_idle(self._apply_capture_exclusion)
 
     def hide_to_tray(self):
@@ -430,7 +484,7 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
         if getattr(self, "_tray_icon", None):
             try:
                 self._set_taskbar_visible(False)
-                self.set_status("Window stays open. Right-click the Jarvis tray icon to restore its taskbar button.")
+                self.set_status("Window stays open. Right-click the Mocha tray icon to restore its taskbar button.")
             except (OSError, RuntimeError, tk.TclError) as exc:
                 self.set_status(f"Could not hide the taskbar button: {exc}")
             return
@@ -439,8 +493,8 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
         draw.rounded_rectangle((5, 5, 59, 59), radius=12, fill="#171717")
         for x, height in ((20, 19), (32, 34), (44, 25)):
             draw.rounded_rectangle((x - 3, 32 - height // 2, x + 3, 32 + height // 2), radius=3, fill="#ffffff")
-        icon = pystray.Icon("Jarvis", image, "Jarvis assistant",
-                            menu=pystray.Menu(pystray.MenuItem("Show Jarvis", self._restore_from_tray),
+        icon = pystray.Icon("Mocha", image, "Mocha assistant",
+                            menu=pystray.Menu(pystray.MenuItem("Show Mocha", self._restore_from_tray),
                                               pystray.MenuItem("Quit", self._quit_from_tray)))
         self._tray_icon = icon
         threading.Thread(target=icon.run, daemon=True).start()
@@ -451,7 +505,7 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
             self._tray_icon = None
             self.set_status(f"Could not hide the taskbar button: {exc}")
             return
-        self.set_status("Window stays open. Right-click the Jarvis tray icon to restore its taskbar button.")
+        self.set_status("Window stays open. Right-click the Mocha tray icon to restore its taskbar button.")
 
     def _restore_from_tray(self, icon=None, item=None):
         if getattr(self, "_closing", False):

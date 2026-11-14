@@ -57,11 +57,11 @@ class PromptBox(tk.Text):
 
 class Toggle(tk.Canvas):
     """Modern on/off switch bound to a BooleanVar. Mimics the ttk state() API."""
-    ON, OFF, DISABLED = "#4F46E5", "#8B92A8", "#C9CDDB"
+    ON, OFF, DISABLED = "#805637", "#A28F80", "#D6C9BD"
 
-    def __init__(self, parent, variable, command=None, bg="#ffffff"):
+    def __init__(self, parent, variable, command=None, bg="#FFFCF8"):
         super().__init__(parent, width=40, height=22, bg=bg, bd=0, highlightthickness=2,
-                         highlightbackground=bg, highlightcolor="#4F46E5", takefocus=True, cursor="hand2")
+                         highlightbackground=bg, highlightcolor="#805637", takefocus=True, cursor="hand2")
         self.variable, self.command, self._disabled = variable, command, False
         self._trace = variable.trace_add("write", lambda *_: self._draw())
         for sequence in ("<Button-1>", "<space>", "<Return>"):
@@ -79,7 +79,7 @@ class Toggle(tk.Canvas):
         self.create_oval(19, 1, 39, 21, fill=color, outline=color)
         self.create_rectangle(11, 1, 29, 21, fill=color, outline=color)
         x = 21 if on else 3
-        self.create_oval(x, 3, x + 16, 19, fill="#ffffff", outline="#ffffff")
+        self.create_oval(x, 3, x + 16, 19, fill="#FFFCF8", outline="#FFFCF8")
 
     def _flip(self, event=None):
         if not self._disabled:
@@ -112,23 +112,23 @@ class Toggle(tk.Canvas):
 
 
 class AudioWorkspaceUI:
-    BG = "#F4F5FA"
-    WHITE = "#ffffff"
-    INK = "#151A2D"
-    MUTED = "#5B6279"
-    LINE = "#E4E7F1"
-    CONTROL_BORDER = "#D9DDEA"
-    PANEL_BORDER = "#E4E7F1"
-    SELECTED = "#EEF0FF"
-    BLUE = "#4F46E5"
+    BG = "#F4EFE9"
+    WHITE = "#FFFCF8"
+    INK = "#30251F"
+    MUTED = "#75665C"
+    LINE = "#E5DAD0"
+    CONTROL_BORDER = "#D6C5B6"
+    PANEL_BORDER = "#E5DAD0"
+    SELECTED = "#EFE2D4"
+    BLUE = "#805637"
     GREEN = "#15803D"
     RED = "#C62828"
-    ACCENT = "#4F46E5"
-    ACCENT_DARK = "#3730A3"
-    ACCENT_HOVER = "#4338CA"
-    ACCENT_SOFT = "#EEF0FF"
-    SURFACE_ALT = "#F8F9FD"
-    NAV_FG = "#4B5268"
+    ACCENT = "#805637"
+    ACCENT_DARK = "#503621"
+    ACCENT_HOVER = "#68432B"
+    ACCENT_SOFT = "#EFE2D4"
+    SURFACE_ALT = "#F8F3ED"
+    NAV_FG = "#69564A"
 
     @staticmethod
     def _round_rect(canvas, x1, y1, x2, y2, radius, **options):
@@ -213,12 +213,11 @@ class AudioWorkspaceUI:
         brand.grid(row=0, column=0, sticky="ew", padx=14, pady=(20, 14))
         mark = tk.Canvas(brand, width=34, height=34, bg=self.WHITE, highlightthickness=0)
         mark.pack(side="left", padx=(0, 10))
-        self._round_rect(mark, 0, 0, 34, 34, 10, fill=self.ACCENT, outline=self.ACCENT)
-        for x, half in [(8, 3), (12, 7), (17, 9), (22, 6), (26, 3)]:
-            mark.create_line(x, 17-half, x, 17+half, fill=self.WHITE, width=3, capstyle="round")
+        from mocha_logo import draw_mark
+        draw_mark(mark, size=34)
         names = tk.Frame(brand, bg=self.WHITE)
         names.pack(side="left")
-        tk.Label(names, text="Jarvis", bg=self.WHITE, fg=self.INK,
+        tk.Label(names, text="Mocha", bg=self.WHITE, fg=self.INK,
                  font=(self.face, 14, "bold")).pack(anchor="w")
         tk.Label(names, text="Personal assistant", bg=self.WHITE, fg=self.MUTED,
                  font=(self.face, 8)).pack(anchor="w")
@@ -405,11 +404,11 @@ class AudioWorkspaceUI:
                   foreground=[("disabled", "#8A90A5")], bordercolor=[("focus", self.ACCENT)])
         style.configure("Primary.TButton", background=self.ACCENT, foreground=self.WHITE,
                         bordercolor=self.ACCENT, lightcolor=self.ACCENT, darkcolor=self.ACCENT)
-        style.map("Primary.TButton", background=[("disabled", "#E4E7F1"), ("active", self.ACCENT_HOVER)],
+        style.map("Primary.TButton", background=[("disabled", "#E5DAD0"), ("active", self.ACCENT_HOVER)],
                   foreground=[("disabled", "#6B7289"), ("!disabled", self.WHITE)],
-                  bordercolor=[("disabled", "#E4E7F1"), ("active", self.ACCENT_HOVER)],
-                  lightcolor=[("disabled", "#E4E7F1"), ("active", self.ACCENT_HOVER)],
-                  darkcolor=[("disabled", "#E4E7F1"), ("active", self.ACCENT_HOVER)])
+                  bordercolor=[("disabled", "#E5DAD0"), ("active", self.ACCENT_HOVER)],
+                  lightcolor=[("disabled", "#E5DAD0"), ("active", self.ACCENT_HOVER)],
+                  darkcolor=[("disabled", "#E5DAD0"), ("active", self.ACCENT_HOVER)])
         style.configure("Recording.TButton", background=self.RED, foreground=self.WHITE,
                         bordercolor=self.RED, lightcolor=self.RED, darkcolor=self.RED)
         style.map("Recording.TButton", background=[("active", "#9F1D1D")], foreground=[("!disabled", self.WHITE)])

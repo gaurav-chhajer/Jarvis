@@ -1,4 +1,4 @@
-# Jarvis Assistant
+# Mocha Assistant
 
 Ask questions, write and debug code, or use audio as context. Speech is transcribed locally. Choose the answer provider in **Settings > Answer provider**.
 
@@ -21,7 +21,7 @@ Double-click `start_assistant.cmd`, or run from this folder:
 
 Codex uses the official `openai-codex` Python SDK and its pinned runtime. It reuses your Codex ChatGPT sign-in; the app does not read or copy authentication tokens. Your account must provide Codex access. API-key sign-in is deliberately rejected for this option, preventing unexpected OpenAI API billing. Keep **Account default** unless you know an available model ID. If signed out, run `codex login` in a terminal and check the connection again. [Official SDK documentation](https://learn.chatgpt.com/docs/codex-sdk), [authentication](https://learn.chatgpt.com/docs/auth).
 
-Codex is configured for answering: ephemeral threads, read-only sandbox, denied permission escalation, and disabled shell, code execution, apps, plugins, MCP configuration, and built-in web tools. Code is displayed as examples, never automatically executed by Jarvis. The app supplies retrieved web excerpts itself.
+Codex is configured for answering: ephemeral threads, read-only sandbox, denied permission escalation, and disabled shell, code execution, apps, plugins, MCP configuration, and built-in web tools. Code is displayed as examples, never automatically executed by Mocha. The app supplies retrieved web excerpts itself.
 
 Groq defaults to `openai/gpt-oss-120b`. Check connection validates the key and lists available models. The masked key field applies immediately for this session. **Save key securely** uses Windows DPAPI encryption tied to your Windows account and stores ciphertext in `.runtime/groq-key.bin`. To forget it, clear the field and save. Keys are never written to preferences or sent as conversation text. On other platforms, use session entry or `GROQ_API_KEY`; secure disk saving is Windows-only. A live Groq request requires your key. [Groq documentation](https://console.groq.com/docs/quickstart).
 
@@ -67,17 +67,19 @@ python -m venv .venv
 
 For Codex sign-in, install the official Codex CLI if `codex login` is unavailable. For Ollama, install [Ollama](https://ollama.com/download) and pull the model above. Linux may also need `sudo apt install python3-tk libportaudio2`; use `.venv/bin/python` instead of the Windows interpreter path.
 
-This Windows environment reuses some system packages. The provider dependencies are installed in the project virtual environment; unrelated global-package dependency warnings do not indicate a failed Jarvis installation.
+This Windows environment reuses some system packages. The provider dependencies are installed in the project virtual environment; unrelated global-package dependency warnings do not indicate a failed Mocha installation.
 
 ## Privacy and shortcuts
 
-Minimize Jarvis to collapse it into a small floating J icon that stays above other windows.
-Click the icon to restore the full window, or drag it to reposition it. Recording and answers
-continue while collapsed. Close the full window to quit.
+Minimize Mocha to collapse it into a small animated coffee-cup icon that stays above other windows.
+Hover over the icon for new-chat and microphone controls, or drag it to reposition it.
+Click it to open a compact chat: type questions and read streaming answers there without
+restoring the main window. The arrow in its toolbar restores the full workspace.
+Recording and answers continue while collapsed. Close the full window to quit.
 
-On Windows 10 version 2004+ and Windows 11, Settings can exclude the main window from compatible screen captures. The status reports Windows confirmation. Test with your meeting app; capture methods vary. Separate system dialogs are not covered. Other operating systems currently have no capture exclusion.
+On Windows 10 version 2004+ and Windows 11, Settings can exclude Mocha and its dropdown popups from compatible screen captures. The status reports Windows confirmation. Test with your meeting app; capture methods vary. Standalone system dialogs may not be covered. Other operating systems currently have no capture exclusion.
 
-On Windows, **Hide taskbar button** removes only Jarvis's taskbar button; its window stays visible. Right-click the Jarvis notification-area icon and choose **Show Jarvis** to restore the taskbar button or **Quit** to exit. The notification-area icon remains visible.
+On Windows, **Hide taskbar button** removes only Mocha's taskbar button; its window stays visible. Right-click the Mocha notification-area icon and choose **Show Mocha** to restore the taskbar button or **Quit** to exit. The notification-area icon remains visible.
 
 Ctrl+O opens audio, Ctrl+S saves, Ctrl+, opens Settings, and Esc returns to the workspace. Settings scroll in smaller windows; the minimum window is 1000 x 640.
 
@@ -90,3 +92,5 @@ Ctrl+O opens audio, Ctrl+S saves, Ctrl+, opens Settings, and Esc returns to the 
 ```
 
 The manual checks send a sample math/coding question to the chosen provider; Codex consumes subscription allowance. Groq is covered with mocked streaming/authentication tests until a key is entered.
+
+Mocha uses a warm coffee theme: ivory workspace surfaces, espresso text, caramel controls, and a dark roasted-coffee floating chat. The animated cup reflects idle, recording, and answering states.
