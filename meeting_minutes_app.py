@@ -354,6 +354,8 @@ class AudioAssistantApp(AudioWorkspaceUI, tk.Tk):
                 canvas.bind("<B1-Motion>", self._floating_drag)
                 canvas.bind("<ButtonRelease-1>", self._floating_release)
                 canvas.bind("<Enter>", lambda event: self._show_floating_chat(), add="+")
+                canvas.bind("<Leave>", lambda event: self._compact_chat.leave(event)
+                            if hasattr(self, '_compact_chat') else None, add="+")
                 self._floating_icon = bubble
             self._floating_icon.deiconify()
             self._floating_icon.lift()

@@ -236,8 +236,11 @@ class FloatingChat:
             if getattr(self.app, '_floating_moved', False):
                 return
             x, y = self.window.winfo_pointerxy()
-            if not self.expanded and not (self.window.winfo_rootx() <= x < self.window.winfo_rootx()+self.window.winfo_width()
-                    and self.window.winfo_rooty() <= y < self.window.winfo_rooty()+self.window.winfo_height()):
+            def inside(widget):
+                return (widget.winfo_viewable()
+                        and widget.winfo_rootx() <= x < widget.winfo_rootx()+widget.winfo_width()
+                        and widget.winfo_rooty() <= y < widget.winfo_rooty()+widget.winfo_height())
+            if not inside(self.window) and not inside(self.app._floating_icon):
                 self.hide()
         self.app.after(250, check)
 
